@@ -2,7 +2,7 @@
 using System.Xml.Serialization;
 using System.Collections.Generic;
 
-namespace ShotcutRandomizer
+namespace CheapShotcutRandomizer
 {
     [XmlRoot(ElementName = "profile")]
     public class Profile

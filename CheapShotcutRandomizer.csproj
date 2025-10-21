@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Exe</OutputType>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+
+    <!-- Package Information -->
+    <AssemblyTitle>Cheap Shotcut Randomizer</AssemblyTitle>
+    <Product>Cheap Shotcut Randomizer</Product>
+    <Description>Desktop app for randomizing and generating optimized Shotcut video project playlists</Description>
+    <Company>Cheap Software Solutions</Company>
+    <Copyright>Copyright © Cheap Software Solutions</Copyright>
+    <Version>2.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- CheapHelpers Project References -->
+    <ProjectReference Include="..\CheapHelpers\CheapHelpers.Blazor\CheapHelpers.Blazor.csproj" />
+    <ProjectReference Include="..\CheapHelpers\CheapHelpers\CheapHelpers.csproj" />
+
+    <!-- CheapAvaloniaBlazor Package Reference -->
+    <PackageReference Include="CheapAvaloniaBlazor" Version="1.0.88" />
+
+    <!-- MudBlazor for UI components -->
+    <PackageReference Include="MudBlazor" Version="8.11.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Static web assets -->
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Components\Pages\" />
+    <Folder Include="Components\Shared\" />
+    <Folder Include="Services\" />
+    <Folder Include="Assets\" />
+  </ItemGroup>
+
+</Project>
