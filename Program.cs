@@ -19,6 +19,7 @@ class Program
         // Register services
         builder.Services.AddScoped<IXmlService, XmlService>();
         builder.Services.AddScoped<ShotcutService>();
+        builder.Services.AddScoped<FileSearchService>();
 
         // Run the app - all Avalonia complexity handled by the package
         builder.RunApp(args);

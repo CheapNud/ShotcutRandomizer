@@ -40,13 +40,74 @@ public class ShotcutService(IXmlService xmlService)
         }
     }
 
-    public void ShufflePlaylist(Mlt project, int playlistIndex)
+    public void ShufflePlaylist(Mlt project, int playlistIndex, bool avoidConsecutiveSameSource = false)
     {
         if (playlistIndex < 0 || playlistIndex >= project.Playlist.Count)
             throw new ArgumentOutOfRangeException(nameof(playlistIndex));
 
         project.Playlist[playlistIndex].Blank = [];
-        project.Playlist[playlistIndex].Entry = [.. project.Playlist[playlistIndex].Entry.Shuffle()];
+
+        if (avoidConsecutiveSameSource)
+        {
+            project.Playlist[playlistIndex].Entry = [.. ShuffleWithConstraints(project.Playlist[playlistIndex].Entry)];
+        }
+        else
+        {
+            project.Playlist[playlistIndex].Entry = [.. project.Playlist[playlistIndex].Entry.Shuffle()];
+        }
+    }
+
+    private static List<Entry> ShuffleWithConstraints(List<Entry> entries)
+    {
+        // If we don't have enough clips, just shuffle normally - can't avoid consecutive same source
+        if (entries.Count < 2)
+            return [.. entries.Shuffle()];
+
+        var random = new Random();
+        var remaining = new List<Entry>(entries);
+        var result = new List<Entry>();
+
+        // Pick first entry randomly
+        var firstIndex = random.Next(remaining.Count);
+        result.Add(remaining[firstIndex]);
+        remaining.RemoveAt(firstIndex);
+
+        // Keep trying to place remaining clips
+        int maxAttempts = remaining.Count * 100; // Prevent infinite loops
+        int attempts = 0;
+
+        while (remaining.Count > 0 && attempts < maxAttempts)
+        {
+            attempts++;
+            var lastProducer = result[^1].Producer;
+
+            // Try to find a clip with different producer
+            var differentProducerClips = remaining.Where(e => e.Producer != lastProducer).ToList();
+
+            if (differentProducerClips.Count > 0)
+            {
+                // Pick randomly from clips with different producer
+                var nextClip = differentProducerClips[random.Next(differentProducerClips.Count)];
+                result.Add(nextClip);
+                remaining.Remove(nextClip);
+            }
+            else
+            {
+                // All remaining clips are from same producer as last one
+                // Just take the next one, we have no choice
+                var nextClip = remaining[random.Next(remaining.Count)];
+                result.Add(nextClip);
+                remaining.Remove(nextClip);
+            }
+        }
+
+        // If we failed (shouldn't happen), just append remaining
+        if (remaining.Count > 0)
+        {
+            result.AddRange(remaining.Shuffle());
+        }
+
+        return result;
     }
 
     public Playlist GenerateRandomPlaylist(

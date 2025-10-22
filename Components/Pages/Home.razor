@@ -1,6 +1,7 @@
 @page "/"
 @using CheapAvaloniaBlazor.Services
 @inject ShotcutService ShotcutSvc
+@inject FileSearchService FileSearchSvc
 @inject IDesktopInteropService Desktop
 @inject ISnackbar Snackbar
 
@@ -35,6 +36,10 @@
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
             <MudText Typo="Typo.h5">Available Playlists</MudText>
             <MudSpacer />
+            <MudCheckBox @bind-Value="_avoidConsecutiveSameSource"
+                         Label="Avoid consecutive clips from same source"
+                         Color="Color.Primary"
+                         Dense="true" />
             <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@SelectAllPlaylists">
                 Select All
             </MudButton>
@@ -72,6 +77,71 @@
                 </MudListItem>
             }
         </MudList>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5" Class="mb-3">Find File in Tracks</MudText>
+
+        <MudStack Spacing="2">
+            <MudTextField @bind-Value="_searchQuery"
+                         Label="Search by filename (partial match)"
+                         Placeholder="Enter part of filename..."
+                         Immediate="false"
+                         Adornment="Adornment.End"
+                         AdornmentIcon="@Icons.Material.Filled.Search"
+                         OnAdornmentClick="@SearchFiles" />
+
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@ShowAllFiles" Size="Size.Small">
+                Show All Files in Project
+            </MudButton>
+
+            @if (_searchResults.Count > 0)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mt-2">Found @_searchResults.Count occurrence(s):</MudText>
+                <MudList T="string" Dense="true">
+                    @foreach (var result in _searchResults)
+                    {
+                        <MudListItem T="string">
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.body2">
+                                    <strong>@result.DisplayName</strong>
+                                </MudText>
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                    Playlist: [@result.PlaylistIndex] @result.PlaylistName • Position: @result.EntryIndex • In: @result.EntryInPoint → Out: @result.EntryOutPoint
+                                </MudText>
+                                @if (!string.IsNullOrEmpty(result.FilePath))
+                                {
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                        Path: @result.FilePath
+                                    </MudText>
+                                }
+                            </MudStack>
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+            else if (_searchPerformed)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">No files found matching "@_searchQuery"</MudAlert>
+            }
+
+            @if (_uniqueFiles.Count > 0)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mt-2">All files (@_uniqueFiles.Count):</MudText>
+                <MudList T="string" Dense="true" Style="max-height: 400px; overflow-y: auto;">
+                    @foreach (var file in _uniqueFiles)
+                    {
+                        <MudListItem T="string" OnClick="@(() => SearchByProducerId(file.ProducerId))">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudIcon Icon="@Icons.Material.Filled.VideoFile" Size="Size.Small" />
+                                <MudText Typo="Typo.body2">@file.FileName</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info">@file.UsageCount</MudChip>
+                            </MudStack>
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+        </MudStack>
     </MudPaper>
 
     <MudPaper Class="pa-4">
@@ -172,8 +242,15 @@
     private string _projectPath = string.Empty;
     private double _durationWeight = 4.0;
     private double _numberOfVideosWeight = 0.8;
+    private bool _avoidConsecutiveSameSource = true;
     private HashSet<int> _selectedPlaylists = [];
     private Dictionary<int, int> _targetSeconds = new();
+
+    // File search
+    private string _searchQuery = string.Empty;
+    private List<FileSearchResult> _searchResults = [];
+    private List<UniqueFileInfo> _uniqueFiles = [];
+    private bool _searchPerformed = false;
 
     private void TogglePlaylistSelection(int playlistIndex, bool selected)
     {
@@ -250,11 +327,12 @@
             if (_currentProject == null)
                 return;
 
-            ShotcutSvc.ShufflePlaylist(_currentProject, playlistIndex);
+            ShotcutSvc.ShufflePlaylist(_currentProject, playlistIndex, _avoidConsecutiveSameSource);
 
             var newPath = await ShotcutSvc.SaveProjectAsync(_currentProject, _projectPath);
 
-            Snackbar.Add($"Shuffled and saved to: {Path.GetFileName(newPath)}", Severity.Success);
+            var constraintMsg = _avoidConsecutiveSameSource ? " (avoiding consecutive same source)" : "";
+            Snackbar.Add($"Shuffled{constraintMsg} and saved to: {Path.GetFileName(newPath)}", Severity.Success);
         }
         catch (Exception ex)
         {
@@ -291,5 +369,52 @@
         {
             Snackbar.Add($"Error generating: {ex.Message}", Severity.Error);
         }
+    }
+
+    private void SearchFiles()
+    {
+        if (_currentProject == null)
+        {
+            Snackbar.Add("Please load a project first", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            Snackbar.Add("Please enter a search query", Severity.Warning);
+            return;
+        }
+
+        _searchResults = FileSearchSvc.SearchByPartialFilename(_currentProject, _searchQuery);
+        _searchPerformed = true;
+        _uniqueFiles = [];
+
+        if (_searchResults.Count == 0)
+        {
+            Snackbar.Add($"No files found matching '{_searchQuery}'", Severity.Info);
+        }
+    }
+
+    private void ShowAllFiles()
+    {
+        if (_currentProject == null)
+        {
+            Snackbar.Add("Please load a project first", Severity.Warning);
+            return;
+        }
+
+        _uniqueFiles = FileSearchSvc.GetUniqueFiles(_currentProject);
+        _searchResults = [];
+        _searchPerformed = false;
+    }
+
+    private void SearchByProducerId(string producerId)
+    {
+        if (_currentProject == null)
+            return;
+
+        _searchResults = FileSearchSvc.SearchByProducerId(_currentProject, producerId);
+        _searchPerformed = true;
+        _searchQuery = $"[Producer: {producerId}]";
     }
 }
