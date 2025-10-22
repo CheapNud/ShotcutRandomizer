@@ -1,19 +1,17 @@
-using System.Xml.Serialization;
 using CheapShotcutRandomizer.Models;
+using CheapHelpers.Services.DataExchange.Xml;
 
 namespace CheapShotcutRandomizer.Services;
 
-public class ShotcutService
+public class ShotcutService(IXmlService xmlService)
 {
-    private readonly XmlSerializer _serializer = new(typeof(Mlt));
+    private readonly IXmlService _xmlService = xmlService;
 
     public async Task<Mlt?> LoadProjectAsync(string path)
     {
         try
         {
-            using StreamReader reader = new(path);
-            var project = _serializer.Deserialize(reader) as Mlt;
-            return await Task.FromResult(project);
+            return await _xmlService.DeserializeAsync<Mlt>(path);
         }
         catch (Exception ex)
         {
@@ -31,10 +29,9 @@ public class ShotcutService
                 $"{Path.GetFileNameWithoutExtension(originalPath)}.Random{Guid.NewGuid().ToString()[..4]}{Path.GetExtension(originalPath)}"
             );
 
-            using FileStream file = File.Create(newpath);
-            _serializer.Serialize(file, project);
+            await _xmlService.SerializeAsync(newpath, project);
 
-            return await Task.FromResult(newpath);
+            return newpath;
         }
         catch (Exception ex)
         {

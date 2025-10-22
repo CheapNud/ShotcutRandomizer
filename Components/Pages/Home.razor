@@ -32,7 +32,26 @@
 @if (_currentProject != null)
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5" Class="mb-3">Available Playlists</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+            <MudText Typo="Typo.h5">Available Playlists</MudText>
+            <MudSpacer />
+            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@SelectAllPlaylists">
+                Select All
+            </MudButton>
+            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Secondary" OnClick="@ClearAllPlaylists">
+                Clear All
+            </MudButton>
+        </MudStack>
+        @if (_selectedPlaylists.Count > 0)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                @_selectedPlaylists.Count playlist@(_selectedPlaylists.Count == 1 ? "" : "s") selected
+            </MudAlert>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mb-2">Select playlists to include in random compilation:</MudText>
+        }
         <MudList T="string" Dense="true">
             @for (int i = _currentProject.Playlist.Count - 1; i > 0; i--)
             {
@@ -40,6 +59,9 @@
                 var index = i;
                 <MudListItem T="string">
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudCheckBox T="bool" Value="@_selectedPlaylists.Contains(index)"
+                                     ValueChanged="@(selected => TogglePlaylistSelection(index, selected))"
+                                     Color="Color.Primary" />
                         <MudText><strong>[@index]</strong> @playlist.Name (@playlist.Entry.Count clips)</MudText>
                         <MudSpacer />
                         <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
@@ -56,16 +78,45 @@
         <MudText Typo="Typo.h5" Class="mb-3">Generate Random Compilation</MudText>
 
         <MudStack Spacing="3">
-            <MudNumericField @bind-Value="_durationWeight" Label="Duration Weight"
-                           HelperText="0 = minimal bias, 0.5 = default, 4 = recommended, 10 = no long videos"
-                           Min="0" Max="20" Step="0.5" />
+            <MudStack Spacing="1">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudText Typo="Typo.body2">
+                        <strong>Duration Weight:</strong> @_durationWeight.ToString("0.00")
+                    </MudText>
+                    <MudTooltip Text="Controls preference for shorter vs longer videos. Higher values strongly favor shorter clips. Use 0 for no bias, 4 for balanced mix, or 10+ to heavily prioritize short videos.">
+                        <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Primary" />
+                    </MudTooltip>
+                </MudStack>
+                <MudSlider @bind-Value="_durationWeight"
+                           Min="0" Max="20" Step="0.05"
+                           Color="Color.Primary"
+                           Variant="Variant.Filled">
+                    @_durationWeight.ToString("0.00")
+                </MudSlider>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    Affects video length selection: 0 = no preference • 0.5 = minimal bias • 4 = balanced (recommended) • 10+ = only short clips
+                </MudText>
+            </MudStack>
 
-            <MudNumericField @bind-Value="_numberOfVideosWeight" Label="Number of Videos Weight"
-                           HelperText="0 = minimal bias, 0.5 = default, 0.8 = recommended"
-                           Min="0" Max="5" Step="0.1" />
-
-            <MudTextField @bind-Value="_playlistSelection" Label="Playlist IDs (space-separated)"
-                        HelperText="Example: 1 2 3" />
+            <MudStack Spacing="1">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudText Typo="Typo.body2">
+                        <strong>Number of Videos Weight:</strong> @_numberOfVideosWeight.ToString("0.00")
+                    </MudText>
+                    <MudTooltip Text="Controls preference for including more clips in the final playlist. Higher values will try to maximize the number of videos included. Use 0 for duration-focused selection, or 0.8 for variety.">
+                        <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Primary" />
+                    </MudTooltip>
+                </MudStack>
+                <MudSlider @bind-Value="_numberOfVideosWeight"
+                           Min="0" Max="5" Step="0.01"
+                           Color="Color.Primary"
+                           Variant="Variant.Filled">
+                    @_numberOfVideosWeight.ToString("0.00")
+                </MudSlider>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    Affects clip count: 0 = duration-focused • 0.5 = balanced • 0.8 = more variety (recommended) • 1+ = maximum clips
+                </MudText>
+            </MudStack>
 
             @if (_selectedPlaylists.Count > 0)
             {
@@ -77,17 +128,39 @@
                         var playlist = _currentProject.Playlist[playlistIndex];
                         var totalSeconds = playlist.Entry.Sum(x => x.Duration);
                         var totalTime = TimeSpan.FromSeconds(totalSeconds);
+                        var currentSeconds = GetTargetSeconds(playlistIndex);
+                        var displayDuration = currentSeconds == 0
+                            ? $"All clips ({totalTime:hh\\:mm\\:ss})"
+                            : TimeSpan.FromSeconds(currentSeconds).ToString(@"hh\:mm\:ss");
 
-                        <MudNumericField T="int" Value="@GetTargetHours(playlistIndex)"
-                                       ValueChanged="@(hours => SetTargetHours(playlistIndex, hours))"
-                                       Label="@($"{playlist.Name} - Target Hours (0 = use all {totalTime:hh\\:mm\\:ss})")"
-                                       Min="0" Max="100" />
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.body2">
+                                <strong>@playlist.Name:</strong> @displayDuration
+                            </MudText>
+                            <MudSlider T="int"
+                                       Value="@currentSeconds"
+                                       ValueChanged="@(seconds => SetTargetSeconds(playlistIndex, seconds))"
+                                       Min="0"
+                                       Max="@totalSeconds"
+                                       Step="60"
+                                       Color="Color.Primary"
+                                       Variant="Variant.Filled">
+                                @if (currentSeconds == 0)
+                                {
+                                    <text>All (@totalTime.ToString(@"hh\:mm\:ss"))</text>
+                                }
+                                else
+                                {
+                                    @TimeSpan.FromSeconds(currentSeconds).ToString(@"hh\:mm\:ss")
+                                }
+                            </MudSlider>
+                        </MudStack>
                     }
                 }
             }
 
             <MudButton Variant="Variant.Filled" Color="Color.Success"
-                     OnClick="@GenerateRandomPlaylistAsync" Disabled="@(string.IsNullOrWhiteSpace(_playlistSelection))">
+                     OnClick="@GenerateRandomPlaylistAsync" Disabled="@(_selectedPlaylists.Count == 0)">
                 Generate Random Playlist
             </MudButton>
         </MudStack>
@@ -99,36 +172,45 @@
     private string _projectPath = string.Empty;
     private double _durationWeight = 4.0;
     private double _numberOfVideosWeight = 0.8;
-    private string _playlistSelection = string.Empty;
-    private List<int> _selectedPlaylists = [];
-    private Dictionary<int, int> _targetHours = new();
+    private HashSet<int> _selectedPlaylists = [];
+    private Dictionary<int, int> _targetSeconds = new();
 
-    protected override void OnParametersSet()
+    private void TogglePlaylistSelection(int playlistIndex, bool selected)
     {
-        UpdateSelectedPlaylists();
-    }
-
-    private void UpdateSelectedPlaylists()
-    {
-        if (string.IsNullOrWhiteSpace(_playlistSelection))
+        if (selected)
         {
-            _selectedPlaylists.Clear();
-            return;
+            _selectedPlaylists.Add(playlistIndex);
         }
-
-        _selectedPlaylists = _playlistSelection
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => int.TryParse(s, out int val) ? val : -1)
-            .Where(i => i > 0)
-            .ToList();
+        else
+        {
+            _selectedPlaylists.Remove(playlistIndex);
+            _targetSeconds.Remove(playlistIndex);
+        }
     }
 
-    private int GetTargetHours(int playlistIndex)
-        => _targetHours.GetValueOrDefault(playlistIndex, 0);
-
-    private void SetTargetHours(int playlistIndex, int hours)
+    private void SelectAllPlaylists()
     {
-        _targetHours[playlistIndex] = hours;
+        if (_currentProject == null) return;
+
+        _selectedPlaylists.Clear();
+        for (int i = 1; i < _currentProject.Playlist.Count; i++)
+        {
+            _selectedPlaylists.Add(i);
+        }
+    }
+
+    private void ClearAllPlaylists()
+    {
+        _selectedPlaylists.Clear();
+        _targetSeconds.Clear();
+    }
+
+    private int GetTargetSeconds(int playlistIndex)
+        => _targetSeconds.GetValueOrDefault(playlistIndex, 0);
+
+    private void SetTargetSeconds(int playlistIndex, int seconds)
+    {
+        _targetSeconds[playlistIndex] = seconds;
     }
 
     private async Task LoadProjectAsync()
@@ -184,8 +266,6 @@
     {
         try
         {
-            UpdateSelectedPlaylists();
-
             if (_currentProject == null || _selectedPlaylists.Count == 0)
             {
                 Snackbar.Add("Please select at least one playlist", Severity.Warning);
@@ -193,7 +273,7 @@
             }
 
             var sourcePlaylists = _selectedPlaylists
-                .Select(idx => (idx, _targetHours.GetValueOrDefault(idx, 0) * 3600))
+                .Select(idx => (idx, _targetSeconds.GetValueOrDefault(idx, 0)))
                 .ToList();
 
             var newPlaylist = ShotcutSvc.GenerateRandomPlaylist(

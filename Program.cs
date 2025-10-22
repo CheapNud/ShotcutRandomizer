@@ -1,6 +1,7 @@
 using CheapAvaloniaBlazor.Hosting;
 using CheapAvaloniaBlazor.Extensions;
 using CheapShotcutRandomizer.Services;
+using CheapHelpers.Services.DataExchange.Xml;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CheapShotcutRandomizer;
@@ -16,6 +17,7 @@ class Program
             .AddMudBlazor();
 
         // Register services
+        builder.Services.AddScoped<IXmlService, XmlService>();
         builder.Services.AddScoped<ShotcutService>();
 
         // Run the app - all Avalonia complexity handled by the package
