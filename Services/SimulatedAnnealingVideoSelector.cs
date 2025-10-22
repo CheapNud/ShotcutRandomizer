@@ -1,19 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using CheapShotcutRandomizer.Models;
 
-namespace CheapShotcutRandomizer
+namespace CheapShotcutRandomizer.Services;
+
+/// <summary>
+///
+/// </summary>
+/// <param name="TargetDuration"></param>
+/// <param name="DurationWeight">This gives moderate preference for shorter videos. 0.1 to 1.0: Balanced selection with slight preference for shorter videos. 1.0 to 2.5: Moderate preference for shorter videos. 3.0 to 5.0: Strong preference for shorter videos. > 5: Extreme bias toward the shortest videos only. </param>
+/// <param name="NumberOfVideosWeight">This adds a slight bias toward maximizing the number of videos included in the final selection. A value between 0.0 and 1.0 is usually reasonable. A higher weight(e.g., 0.5 or 0.8) may work well in scenarios where you have many short videos and want to prioritize their inclusion.</param>
+public class SimulatedAnnealingVideoSelector(int TargetDuration = 3600, double DurationWeight = 0.5, double NumberOfVideosWeight = 0.5)
 {
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <param name="TargetDuration"></param>
-    /// <param name="DurationWeight">This gives moderate preference for shorter videos. 0.1 to 1.0: Balanced selection with slight preference for shorter videos. 1.0 to 2.5: Moderate preference for shorter videos. 3.0 to 5.0: Strong preference for shorter videos. > 5: Extreme bias toward the shortest videos only. </param>
-    /// <param name="NumberOfVideosWeight">This adds a slight bias toward maximizing the number of videos included in the final selection. A value between 0.0 and 1.0 is usually reasonable. A higher weight(e.g., 0.5 or 0.8) may work well in scenarios where you have many short videos and want to prioritize their inclusion.</param>
-    public class SimulatedAnnealingVideoSelector(int TargetDuration = 3600, double DurationWeight = 0.5, double NumberOfVideosWeight = 0.5)
-    {
         private static readonly Random rand = new();
         //Set the starting temperature high to allow more freedom in early iterations.
         private const double InitialTemperature = 10000.0;
@@ -131,4 +130,3 @@ namespace CheapShotcutRandomizer
             return newSolution;
         }
     }
-}

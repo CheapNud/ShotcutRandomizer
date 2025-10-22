@@ -1,5 +1,5 @@
 using System.Xml.Serialization;
-using CheapShotcutRandomizer;
+using CheapShotcutRandomizer.Models;
 
 namespace CheapShotcutRandomizer.Services;
 

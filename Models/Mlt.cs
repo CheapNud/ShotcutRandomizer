@@ -2,11 +2,11 @@
 using System.Xml.Serialization;
 using System.Collections.Generic;
 
-namespace CheapShotcutRandomizer
+namespace CheapShotcutRandomizer.Models;
+
+[XmlRoot(ElementName = "profile")]
+public class Profile
 {
-    [XmlRoot(ElementName = "profile")]
-    public class Profile
-    {
         [XmlAttribute(AttributeName = "description")]
         public string Description { get; set; }
         [XmlAttribute(AttributeName = "width")]
@@ -177,4 +177,3 @@ namespace CheapShotcutRandomizer
         [XmlAttribute(AttributeName = "title")]
         public string Title { get; set; }
     }
-}

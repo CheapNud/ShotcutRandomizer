@@ -36,9 +36,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Components\Pages\" />
     <Folder Include="Components\Shared\" />
-    <Folder Include="Services\" />
     <Folder Include="Assets\" />
   </ItemGroup>
 
