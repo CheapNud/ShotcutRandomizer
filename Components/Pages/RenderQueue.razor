@@ -1,0 +1,378 @@
+@page "/render-queue"
+@using CheapShotcutRandomizer.Components.Shared
+@inject IRenderQueueService QueueService
+@inject IRenderJobRepository Repository
+@inject HardwareDetectionService HardwareService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@implements IDisposable
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudStack Spacing="3">
+        <!-- Header with Hardware Info -->
+        <MudGrid>
+            <MudItem xs="12" md="8">
+                <MudText Typo="Typo.h4">Render Queue</MudText>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                @if (_hardware != null)
+                {
+                    <HardwareInfoCard Hardware="_hardware" />
+                }
+            </MudItem>
+        </MudGrid>
+
+        <!-- Action Buttons -->
+        <MudPaper Class="pa-4">
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="@OpenAddJobDialog">
+                    Add Job
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="@RefreshJobs">
+                    Refresh
+                </MudButton>
+                <MudSpacer />
+                @if (_activeJobs.Count > 0)
+                {
+                    <MudChip T="string" Color="Color.Primary" Size="Size.Medium">
+                        @_activeJobs.Count Active Job@(_activeJobs.Count != 1 ? "s" : "")
+                    </MudChip>
+                }
+            </MudStack>
+        </MudPaper>
+
+        <!-- Tabs for different job states -->
+        <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+            <MudTabPanel Text="Active" Icon="@Icons.Material.Filled.PlayArrow" BadgeData="@_activeJobs.Count" BadgeColor="Color.Primary">
+                @if (_isLoading)
+                {
+                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                }
+                else if (_activeJobs.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info">
+                        No active jobs. Click "Add Job" to start rendering!
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudStack Spacing="2">
+                        @foreach (var job in _activeJobs)
+                        {
+                            <RenderJobCard Job="@job"
+                                           OnPause="@HandlePause"
+                                           OnResume="@HandleResume"
+                                           OnCancel="@HandleCancel"
+                                           OnRetry="@HandleRetry" />
+                        }
+                    </MudStack>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="Completed" Icon="@Icons.Material.Filled.CheckCircle" BadgeData="@_completedJobs.Count" BadgeColor="Color.Success">
+                @if (_isLoading)
+                {
+                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                }
+                else if (_completedJobs.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info">
+                        No completed jobs yet.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudStack Spacing="2">
+                        @foreach (var job in _completedJobs)
+                        {
+                            <RenderJobCard Job="@job"
+                                           OnPause="@HandlePause"
+                                           OnResume="@HandleResume"
+                                           OnCancel="@HandleCancel"
+                                           OnRetry="@HandleRetry" />
+                        }
+                    </MudStack>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="Failed" Icon="@Icons.Material.Filled.Error" BadgeData="@_failedJobs.Count" BadgeColor="Color.Error">
+                @if (_isLoading)
+                {
+                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                }
+                else if (_failedJobs.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Success">
+                        No failed jobs - everything's running smoothly!
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudStack Spacing="2">
+                        @foreach (var job in _failedJobs)
+                        {
+                            <RenderJobCard Job="@job"
+                                           OnPause="@HandlePause"
+                                           OnResume="@HandleResume"
+                                           OnCancel="@HandleCancel"
+                                           OnRetry="@HandleRetry" />
+                        }
+                    </MudStack>
+                }
+            </MudTabPanel>
+        </MudTabs>
+    </MudStack>
+</MudContainer>
+
+@code {
+    private List<RenderJob> _activeJobs = new();
+    private List<RenderJob> _completedJobs = new();
+    private List<RenderJob> _failedJobs = new();
+    private HardwareCapabilities? _hardware;
+    private bool _isLoading = true;
+    private System.Threading.Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Detect hardware
+        _hardware = await HardwareService.DetectHardwareAsync();
+
+        // Load initial data
+        await LoadJobs();
+
+        // Subscribe to events for real-time updates
+        QueueService.ProgressChanged += OnProgressChanged;
+        QueueService.StatusChanged += OnStatusChanged;
+
+        // Start polling timer as fallback (every 2 seconds)
+        _refreshTimer = new System.Threading.Timer(
+            async _ => await RefreshJobsInternal(),
+            null,
+            TimeSpan.Zero,
+            TimeSpan.FromSeconds(2));
+
+        _isLoading = false;
+    }
+
+    private async Task LoadJobs()
+    {
+        try
+        {
+            var activeTask = QueueService.GetActiveJobsAsync();
+            var completedTask = QueueService.GetCompletedJobsAsync();
+            var failedTask = QueueService.GetFailedJobsAsync();
+
+            await Task.WhenAll(activeTask, completedTask, failedTask);
+
+            _activeJobs = activeTask.Result.ToList();
+            _completedJobs = completedTask.Result.ToList();
+            _failedJobs = failedTask.Result.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading jobs: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task RefreshJobs()
+    {
+        _isLoading = true;
+        await LoadJobs();
+        _isLoading = false;
+        StateHasChanged();
+        Snackbar.Add("Jobs refreshed", Severity.Success);
+    }
+
+    private async Task RefreshJobsInternal()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadJobs();
+            StateHasChanged();
+        });
+    }
+
+    private async void OnProgressChanged(object? sender, RenderProgressEventArgs e)
+    {
+        await InvokeAsync(() =>
+        {
+            // Find job in active jobs list
+            var job = _activeJobs.FirstOrDefault(j => j.JobId == e.JobId);
+            if (job != null)
+            {
+                job.ProgressPercentage = e.ProgressPercentage;
+                job.CurrentFrame = e.CurrentFrame;
+                job.TotalFrames = e.TotalFrames;
+                job.EstimatedTimeRemaining = e.EstimatedTimeRemaining;
+                StateHasChanged();
+            }
+        });
+    }
+
+    private async void OnStatusChanged(object? sender, RenderProgressEventArgs e)
+    {
+        await InvokeAsync(async () =>
+        {
+            // Reload jobs from database when status changes
+            await LoadJobs();
+            StateHasChanged();
+
+            // Show notification
+            var message = e.Status switch
+            {
+                RenderJobStatus.Completed => "Job completed successfully!",
+                RenderJobStatus.Failed => $"Job failed: {e.ErrorMessage}",
+                RenderJobStatus.Cancelled => "Job cancelled",
+                _ => null
+            };
+
+            if (message != null)
+            {
+                var severity = e.Status == RenderJobStatus.Completed ? Severity.Success : Severity.Warning;
+                Snackbar.Add(message, severity);
+            }
+        });
+    }
+
+    private async Task OpenAddJobDialog()
+    {
+        var parameters = new DialogParameters<AddRenderJobDialog>
+        {
+            { x => x.OnJobAdded, EventCallback.Factory.Create<RenderJob>(this, HandleJobAdded) }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseButton = true
+        };
+
+        var dialog = await DialogService.ShowAsync<AddRenderJobDialog>("Add Render Job", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is RenderJob job)
+        {
+            await HandleJobAdded(job);
+        }
+    }
+
+    private async Task HandleJobAdded(RenderJob renderJob)
+    {
+        try
+        {
+            var jobId = await QueueService.AddJobAsync(renderJob);
+            await LoadJobs();
+            StateHasChanged();
+            Snackbar.Add("Job added to queue successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error adding job: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task HandlePause(Guid jobId)
+    {
+        try
+        {
+            var success = await QueueService.PauseJobAsync(jobId);
+            if (success)
+            {
+                await LoadJobs();
+                StateHasChanged();
+                Snackbar.Add("Job paused", Severity.Info);
+            }
+            else
+            {
+                Snackbar.Add("Failed to pause job", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error pausing job: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task HandleResume(Guid jobId)
+    {
+        try
+        {
+            var success = await QueueService.ResumeJobAsync(jobId);
+            if (success)
+            {
+                await LoadJobs();
+                StateHasChanged();
+                Snackbar.Add("Job resumed", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to resume job", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error resuming job: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task HandleCancel(Guid jobId)
+    {
+        try
+        {
+            var success = await QueueService.CancelJobAsync(jobId);
+            if (success)
+            {
+                await LoadJobs();
+                StateHasChanged();
+                Snackbar.Add("Job cancelled", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add("Failed to cancel job", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error cancelling job: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task HandleRetry(Guid jobId)
+    {
+        try
+        {
+            var success = await QueueService.RetryJobAsync(jobId);
+            if (success)
+            {
+                await LoadJobs();
+                StateHasChanged();
+                Snackbar.Add("Job queued for retry", Severity.Info);
+            }
+            else
+            {
+                Snackbar.Add("Failed to retry job", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error retrying job: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public void Dispose()
+    {
+        // CRITICAL: Unsubscribe from events to prevent memory leaks
+        QueueService.ProgressChanged -= OnProgressChanged;
+        QueueService.StatusChanged -= OnStatusChanged;
+
+        // Dispose timer
+        _refreshTimer?.Dispose();
+    }
+}

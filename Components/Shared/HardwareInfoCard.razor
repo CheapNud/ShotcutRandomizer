@@ -1,0 +1,48 @@
+@using CheapShotcutRandomizer.Services
+
+<MudPaper Class="pa-4">
+    <MudStack Spacing="2">
+        <MudText Typo="Typo.h6">Hardware Capabilities</MudText>
+
+        <MudDivider />
+
+        <MudStack Row="true" AlignItems="AlignItems.Center">
+            <MudIcon Icon="@Icons.Material.Filled.Memory" />
+            <MudText>CPU: @Hardware.CpuName (@Hardware.CpuCoreCount cores)</MudText>
+        </MudStack>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center">
+            <MudIcon Icon="@Icons.Material.Filled.Videocam" />
+            <MudText>GPU: @Hardware.GpuName</MudText>
+        </MudStack>
+
+        @if (Hardware.NvencAvailable)
+        {
+            <MudAlert Severity="Severity.Success" Dense="true">
+                NVENC available - Hardware acceleration enabled!
+                <br />
+                Speedup: ~@Hardware.NvencSpeedupFactor.ToString("F1")x faster than CPU
+            </MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true">
+                NVENC not available - Using CPU encoding
+            </MudAlert>
+        }
+
+        <MudText Typo="Typo.caption">
+            Estimated render time for 1-hour video:<br />
+            CPU: ~@Hardware.EstimateFFmpegRenderTime(TimeSpan.FromHours(1), false).TotalMinutes.ToString("F0") minutes<br />
+            @if (Hardware.NvencAvailable)
+            {
+                <text>NVENC: ~@Hardware.EstimateFFmpegRenderTime(TimeSpan.FromHours(1), true).TotalMinutes.ToString("F0") minutes</text>
+            }
+        </MudText>
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter]
+    public HardwareCapabilities Hardware { get; set; } = null!;
+}

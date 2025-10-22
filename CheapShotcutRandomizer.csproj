@@ -29,6 +29,23 @@
 
     <!-- MudBlazor for UI components -->
     <PackageReference Include="MudBlazor" Version="8.13.0" />
+
+    <!-- FFmpeg wrapper for video processing -->
+    <PackageReference Include="FFMpegCore" Version="5.2.0" />
+
+    <!-- Hardware detection (WMI) -->
+    <PackageReference Include="System.Management" Version="10.0.0-rc.2.25502.107" />
+
+    <!-- Entity Framework Core for render queue database -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.10">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+
+    <!-- Polly for retry logic -->
+    <PackageReference Include="Polly" Version="8.6.4" />
   </ItemGroup>
 
   <ItemGroup>

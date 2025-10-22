@@ -1,0 +1,174 @@
+@using CheapShotcutRandomizer.Models
+
+<MudPaper Class="pa-4 mb-2">
+    <MudGrid>
+        <MudItem xs="12">
+            <MudStack Row="true" AlignItems="AlignItems.Center">
+                <MudIcon Icon="@GetStatusIcon()" Color="@GetStatusColor()" />
+                <MudText Typo="Typo.h6">@Path.GetFileName(Job.SourceVideoPath)</MudText>
+                <MudSpacer />
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor()">
+                    @Job.Status.ToString()
+                </MudChip>
+            </MudStack>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudText Typo="Typo.body2">
+                Output: @Job.OutputPath
+            </MudText>
+        </MudItem>
+
+        @if (Job.Status == RenderJobStatus.Running)
+        {
+            <MudItem xs="12">
+                <MudProgressLinear Value="@Job.ProgressPercentage"
+                                   Color="Color.Primary"
+                                   Size="Size.Large">
+                    <MudText Typo="Typo.body2">
+                        @Job.ProgressPercentage.ToString("F1")%
+                        (Frame @Job.CurrentFrame/@Job.TotalFrames)
+                    </MudText>
+                </MudProgressLinear>
+            </MudItem>
+
+            @if (Job.EstimatedTimeRemaining.HasValue)
+            {
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption">
+                        ETA: @Job.EstimatedTimeRemaining.Value.ToString(@"hh\:mm\:ss")
+                    </MudText>
+                </MudItem>
+            }
+        }
+
+        @if (Job.Status == RenderJobStatus.Pending)
+        {
+            <MudItem xs="12">
+                <MudText Typo="Typo.body2" Color="Color.Info">
+                    Queued - Waiting to start...
+                </MudText>
+            </MudItem>
+        }
+
+        <MudItem xs="12">
+            <MudStack Row="true" Spacing="2">
+                @if (Job.Status == RenderJobStatus.Running)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Filled"
+                               Color="Color.Warning" OnClick="@(() => OnPause.InvokeAsync(Job.JobId))">
+                        Pause
+                    </MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled"
+                               Color="Color.Error" OnClick="@(() => OnCancel.InvokeAsync(Job.JobId))">
+                        Cancel
+                    </MudButton>
+                }
+                else if (Job.Status == RenderJobStatus.Paused)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Filled"
+                               Color="Color.Success" OnClick="@(() => OnResume.InvokeAsync(Job.JobId))">
+                        Resume
+                    </MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled"
+                               Color="Color.Error" OnClick="@(() => OnCancel.InvokeAsync(Job.JobId))">
+                        Cancel
+                    </MudButton>
+                }
+                else if (Job.Status == RenderJobStatus.Failed || Job.Status == RenderJobStatus.DeadLetter)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                               Color="Color.Primary" OnClick="@(() => OnRetry.InvokeAsync(Job.JobId))">
+                        Retry
+                    </MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                               Color="Color.Error" OnClick="@ShowErrorDetails">
+                        View Error
+                    </MudButton>
+                }
+                else if (Job.Status == RenderJobStatus.Completed)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                               Color="Color.Success" OnClick="@OpenOutputFolder">
+                        Open Folder
+                    </MudButton>
+                }
+            </MudStack>
+        </MudItem>
+
+        @if (!string.IsNullOrEmpty(Job.LastError) && _showError)
+        {
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Error" Dense="true" CloseIcon="true" CloseIconClicked="@(() => _showError = false)">
+                    @Job.LastError
+                </MudAlert>
+            </MudItem>
+        }
+    </MudGrid>
+</MudPaper>
+
+@code {
+    [Parameter]
+    public RenderJob Job { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<Guid> OnPause { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnResume { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnCancel { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnRetry { get; set; }
+
+    private bool _showError = false;
+
+    private string GetStatusIcon() => Job.Status switch
+    {
+        RenderJobStatus.Pending => Icons.Material.Filled.HourglassEmpty,
+        RenderJobStatus.Running => Icons.Material.Filled.PlayArrow,
+        RenderJobStatus.Paused => Icons.Material.Filled.Pause,
+        RenderJobStatus.Completed => Icons.Material.Filled.CheckCircle,
+        RenderJobStatus.Failed => Icons.Material.Filled.Error,
+        RenderJobStatus.Cancelled => Icons.Material.Filled.Cancel,
+        RenderJobStatus.DeadLetter => Icons.Material.Filled.Delete,
+        _ => Icons.Material.Filled.Help
+    };
+
+    private Color GetStatusColor() => Job.Status switch
+    {
+        RenderJobStatus.Running => Color.Primary,
+        RenderJobStatus.Completed => Color.Success,
+        RenderJobStatus.Failed => Color.Error,
+        RenderJobStatus.Cancelled => Color.Warning,
+        RenderJobStatus.DeadLetter => Color.Error,
+        _ => Color.Default
+    };
+
+    private void ShowErrorDetails()
+    {
+        _showError = !_showError;
+    }
+
+    private void OpenOutputFolder()
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(Job.OutputPath);
+            if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = directory,
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch
+        {
+            // Silently fail if can't open folder
+        }
+    }
+}

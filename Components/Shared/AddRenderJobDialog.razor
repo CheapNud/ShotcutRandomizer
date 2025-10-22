@@ -1,0 +1,350 @@
+@using CheapShotcutRandomizer.Models
+@using CheapShotcutRandomizer.Services
+@using CheapAvaloniaBlazor.Services
+@inject IDesktopInteropService DesktopInterop
+@inject HardwareDetectionService HardwareService
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.h6">Add Render Job</MudText>
+
+            <MudStack Row="true" Spacing="2">
+                <MudTextField @bind-Value="_sourcePath"
+                              Label="Source File"
+                              Variant="Variant.Outlined"
+                              FullWidth="true"
+                              ReadOnly="true" />
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="@BrowseSource">
+                    Browse...
+                </MudButton>
+            </MudStack>
+
+            <MudStack Row="true" Spacing="2">
+                <MudTextField @bind-Value="_outputPath"
+                              Label="Output Path"
+                              Variant="Variant.Outlined"
+                              FullWidth="true"
+                              ReadOnly="true" />
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="@BrowseOutput">
+                    Browse...
+                </MudButton>
+            </MudStack>
+
+            <MudSelect @bind-Value="_renderType"
+                       Label="Render Type"
+                       Variant="Variant.Outlined"
+                       T="RenderType">
+                <MudSelectItem Value="RenderType.MltProject" T="RenderType">MLT Project</MudSelectItem>
+                <MudSelectItem Value="RenderType.RifeInterpolation" T="RenderType">RIFE Interpolation</MudSelectItem>
+            </MudSelect>
+
+            @if (_renderType == RenderType.MltProject)
+            {
+                <MudText Typo="Typo.subtitle2">MLT Settings</MudText>
+
+                <MudSlider @bind-Value="_mltThreads"
+                           Min="1"
+                           Max="@_maxThreads"
+                           Step="1"
+                           Color="Color.Primary">
+                    CPU Threads: @_mltThreads
+                </MudSlider>
+
+                <MudSelect @bind-Value="_mltPreset"
+                           Label="Quality Preset"
+                           Variant="Variant.Outlined"
+                           T="string">
+                    <MudSelectItem Value="@("ultrafast")" T="string">Ultra Fast</MudSelectItem>
+                    <MudSelectItem Value="@("superfast")" T="string">Super Fast</MudSelectItem>
+                    <MudSelectItem Value="@("veryfast")" T="string">Very Fast</MudSelectItem>
+                    <MudSelectItem Value="@("faster")" T="string">Faster</MudSelectItem>
+                    <MudSelectItem Value="@("fast")" T="string">Fast</MudSelectItem>
+                    <MudSelectItem Value="@("medium")" T="string">Medium (Recommended)</MudSelectItem>
+                    <MudSelectItem Value="@("slow")" T="string">Slow</MudSelectItem>
+                    <MudSelectItem Value="@("slower")" T="string">Slower</MudSelectItem>
+                </MudSelect>
+
+                <MudSlider @bind-Value="_mltCrf"
+                           Min="15"
+                           Max="28"
+                           Step="1"
+                           Color="Color.Primary">
+                    Quality (CRF): @_mltCrf (Lower = Better)
+                </MudSlider>
+            }
+            else
+            {
+                <MudText Typo="Typo.subtitle2">RIFE Interpolation Settings</MudText>
+
+                <MudSlider @bind-Value="_rifeMultiplier"
+                           Min="2"
+                           Max="8"
+                           Step="1"
+                           Color="Color.Primary">
+                    Interpolation Multiplier: @_rifeMultiplier x
+                </MudSlider>
+
+                <MudNumericField @bind-Value="_rifeTargetFps"
+                                 Label="Target FPS"
+                                 Variant="Variant.Outlined"
+                                 Min="30"
+                                 Max="240"
+                                 T="int" />
+
+                <MudSelect @bind-Value="_rifeQuality"
+                           Label="Quality Preset"
+                           Variant="Variant.Outlined"
+                           T="string">
+                    <MudSelectItem Value="@("draft")" T="string">Draft (Fastest)</MudSelectItem>
+                    <MudSelectItem Value="@("medium")" T="string">Medium (Recommended)</MudSelectItem>
+                    <MudSelectItem Value="@("high")" T="string">High Quality</MudSelectItem>
+                </MudSelect>
+            }
+
+            @if (!string.IsNullOrEmpty(_estimatedTime))
+            {
+                <MudAlert Severity="Severity.Info">
+                    @_estimatedTime
+                </MudAlert>
+            }
+
+            @if (!string.IsNullOrEmpty(_validationError))
+            {
+                <MudAlert Severity="Severity.Error">
+                    @_validationError
+                </MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   OnClick="@AddJob"
+                   Disabled="@(!IsValid())">
+            Add to Queue
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter]
+    public EventCallback<RenderJob> OnJobAdded { get; set; }
+
+    [Parameter]
+    public EventCallback OnClosed { get; set; }
+
+    private string _sourcePath = string.Empty;
+    private string _outputPath = string.Empty;
+    private RenderType _renderType = RenderType.MltProject;
+
+    // MLT settings
+    private int _mltThreads = Environment.ProcessorCount;
+    private int _maxThreads = Environment.ProcessorCount;
+    private string _mltPreset = "medium";
+    private int _mltCrf = 23;
+
+    // RIFE settings
+    private int _rifeMultiplier = 2;
+    private int _rifeTargetFps = 60;
+    private string _rifeQuality = "medium";
+
+    private string _estimatedTime = string.Empty;
+    private string _validationError = string.Empty;
+    private HardwareCapabilities? _hardware;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _hardware = await HardwareService.DetectHardwareAsync();
+        _maxThreads = _hardware.CpuCoreCount;
+        _mltThreads = _hardware.CpuCoreCount;
+    }
+
+    private async Task BrowseSource()
+    {
+        var filters = _renderType == RenderType.MltProject
+            ? new List<CheapAvaloniaBlazor.Models.FileFilter>
+            {
+                new() { Name = "MLT Files", Extensions = new[] { "*.mlt" } },
+                new() { Name = "All Files", Extensions = new[] { "*.*" } }
+            }
+            : new List<CheapAvaloniaBlazor.Models.FileFilter>
+            {
+                new() { Name = "Video Files", Extensions = new[] { "*.mp4", "*.mkv", "*.avi" } },
+                new() { Name = "All Files", Extensions = new[] { "*.*" } }
+            };
+
+        var options = new CheapAvaloniaBlazor.Models.FileDialogOptions
+        {
+            Title = "Select Source File",
+            Filters = filters
+        };
+
+        var selectedFile = await DesktopInterop.OpenFileDialogAsync(options);
+
+        if (!string.IsNullOrEmpty(selectedFile))
+        {
+            _sourcePath = selectedFile;
+
+            // Auto-populate output path
+            if (string.IsNullOrEmpty(_outputPath))
+            {
+                var directory = Path.GetDirectoryName(_sourcePath) ?? "";
+                var fileNameWithoutExt = Path.GetFileNameWithoutExtension(_sourcePath);
+                var suffix = _renderType == RenderType.RifeInterpolation ? "_rife" : "_render";
+                _outputPath = Path.Combine(directory, $"{fileNameWithoutExt}{suffix}.mp4");
+            }
+
+            UpdateEstimatedTime();
+        }
+    }
+
+    private async Task BrowseOutput()
+    {
+        var defaultFileName = !string.IsNullOrEmpty(_sourcePath)
+            ? Path.GetFileNameWithoutExtension(_sourcePath) + ".mp4"
+            : "output.mp4";
+
+        var filters = new List<CheapAvaloniaBlazor.Models.FileFilter>
+        {
+            new() { Name = "MP4 Files", Extensions = new[] { "*.mp4" } },
+            new() { Name = "MKV Files", Extensions = new[] { "*.mkv" } },
+            new() { Name = "All Files", Extensions = new[] { "*.*" } }
+        };
+
+        var options = new CheapAvaloniaBlazor.Models.FileDialogOptions
+        {
+            Title = "Save Output As",
+            DefaultFileName = defaultFileName,
+            Filters = filters
+        };
+
+        var selectedFile = await DesktopInterop.SaveFileDialogAsync(options);
+
+        if (!string.IsNullOrEmpty(selectedFile))
+        {
+            _outputPath = selectedFile;
+        }
+    }
+
+    private void UpdateEstimatedTime()
+    {
+        if (_hardware == null || string.IsNullOrEmpty(_sourcePath))
+        {
+            _estimatedTime = string.Empty;
+            return;
+        }
+
+        // Estimate based on typical video duration (placeholder - would need actual video info)
+        var estimatedDuration = TimeSpan.FromMinutes(10); // Default estimate
+
+        if (_renderType == RenderType.MltProject)
+        {
+            // MLT always uses CPU
+            var renderTime = _hardware.EstimateFFmpegRenderTime(estimatedDuration, useNvenc: false);
+            _estimatedTime = $"Estimated render time: ~{renderTime.TotalMinutes:F0} minutes (CPU)";
+        }
+        else
+        {
+            // RIFE workflow uses NVENC if available
+            var renderTime = _hardware.EstimateFFmpegRenderTime(estimatedDuration, _hardware.NvencAvailable);
+            var method = _hardware.NvencAvailable ? "NVENC" : "CPU";
+            _estimatedTime = $"Estimated render time: ~{renderTime.TotalMinutes:F0} minutes ({method})";
+
+            if (_hardware.NvencAvailable)
+            {
+                var cpuTime = _hardware.EstimateFFmpegRenderTime(estimatedDuration, useNvenc: false);
+                _estimatedTime += $" - Saves ~{(cpuTime - renderTime).TotalMinutes:F0} minutes vs CPU!";
+            }
+        }
+    }
+
+    private bool IsValid()
+    {
+        _validationError = string.Empty;
+
+        if (string.IsNullOrEmpty(_sourcePath))
+        {
+            _validationError = "Please select a source file";
+            return false;
+        }
+
+        if (!File.Exists(_sourcePath))
+        {
+            _validationError = "Source file does not exist";
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(_outputPath))
+        {
+            _validationError = "Please specify an output path";
+            return false;
+        }
+
+        if (_renderType == RenderType.MltProject && !_sourcePath.EndsWith(".mlt", StringComparison.OrdinalIgnoreCase))
+        {
+            _validationError = "Source file must be an MLT project (.mlt)";
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task AddJob()
+    {
+        if (!IsValid())
+            return;
+
+        var renderJob = new RenderJob
+        {
+            SourceVideoPath = _sourcePath,
+            OutputPath = _outputPath,
+            RenderType = _renderType,
+            Status = RenderJobStatus.Pending
+        };
+
+        if (_renderType == RenderType.MltProject)
+        {
+            renderJob.MeltSettings = new MeltRenderSettings
+            {
+                ThreadCount = _mltThreads,
+                Preset = _mltPreset,
+                Crf = _mltCrf,
+                VideoCodec = "libx264",
+                AudioCodec = "aac",
+                AudioBitrate = "128k",
+                UseHardwareAcceleration = false // Always false for MLT
+            };
+        }
+        else
+        {
+            var ffmpegSettings = _rifeQuality switch
+            {
+                "draft" => await HardwareService.GetFastFFmpegSettingsAsync(_rifeTargetFps),
+                "high" => await HardwareService.GetHighQualityFFmpegSettingsAsync(_rifeTargetFps),
+                _ => await HardwareService.GetOptimalFFmpegSettingsAsync(_rifeTargetFps)
+            };
+
+            renderJob.FFmpegSettings = ffmpegSettings;
+            renderJob.RifeSettings = new RifeSettings
+            {
+                InterpolationMultiplier = _rifeMultiplier,
+                TargetFps = _rifeTargetFps,
+                QualityPreset = _rifeQuality
+            };
+        }
+
+        await OnJobAdded.InvokeAsync(renderJob);
+        await OnClosed.InvokeAsync();
+    }
+
+    private async Task Cancel()
+    {
+        await OnClosed.InvokeAsync();
+    }
+}
