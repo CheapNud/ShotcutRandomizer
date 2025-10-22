@@ -41,4 +41,7 @@ Uses simulated annealing optimization to select the best combination of clips ba
 - MudBlazor UI components
 - CheapHelpers.Services (XML serialization)
 
+
+<img width="1508" height="1247" alt="Screenshot 2025-10-22 024423" src="https://github.com/user-attachments/assets/56b6ce72-ca23-4109-ad6f-05685f09a05f" />
+
 ---
