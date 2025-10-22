@@ -24,10 +24,10 @@
     <ProjectReference Include="..\CheapHelpers\CheapHelpers\CheapHelpers.csproj" />
 
     <!-- CheapAvaloniaBlazor Package Reference -->
-    <PackageReference Include="CheapAvaloniaBlazor" Version="1.0.88" />
+    <PackageReference Include="CheapAvaloniaBlazor" Version="1.0.89" />
 
     <!-- MudBlazor for UI components -->
-    <PackageReference Include="MudBlazor" Version="8.11.0" />
+    <PackageReference Include="MudBlazor" Version="8.13.0" />
   </ItemGroup>
 
   <ItemGroup>
