@@ -35,6 +35,9 @@ public class FileSearchService
                 producerPaths[project.Producer.Id] = path;
         }
 
+        // Get frame rate for blank duration calculation
+        var frameRate = project.GetFrameRate();
+
         // Search in playlists (playlists are also producers in MLT)
         var playlistsToSearch = playlistIndices ?? Enumerable.Range(0, project.Playlist.Count).ToList();
 
@@ -45,54 +48,77 @@ public class FileSearchService
 
             var playlist = project.Playlist[playlistIndex];
 
-            for (int entryIndex = 0; entryIndex < playlist.Entry.Count; entryIndex++)
+            // Calculate timeline positions using ordered items (respects Entry/Blank order)
+            var cumulativeTime = TimeSpan.Zero;
+            var entryIndex = 0; // Track Entry index separately
+
+            foreach (var item in playlist.OrderedItems)
             {
-                var entry = playlist.Entry[entryIndex];
-                var producerId = entry.Producer;
-
-                // Try to find the producer's resource path
-                string? resourcePath = null;
-
-                // Check if we already have it
-                if (producerPaths.TryGetValue(producerId, out var cachedPath))
+                if (item is Entry entry)
                 {
-                    resourcePath = cachedPath;
-                }
-                else
-                {
-                    // Search for the producer definition
-                    // In MLT, producers might be defined at project level or in chains
-                    if (project.Chain != null)
+                    var producerId = entry.Producer;
+
+                    // Calculate start and end times for this entry
+                    var startTime = cumulativeTime;
+                    var clipDuration = TimeSpan.FromSeconds(entry.Duration);
+                    var endTime = startTime + clipDuration;
+
+                    // Try to find the producer's resource path
+                    string? resourcePath = null;
+
+                    // Check if we already have it
+                    if (producerPaths.TryGetValue(producerId, out var cachedPath))
                     {
-                        foreach (var chain in project.Chain)
+                        resourcePath = cachedPath;
+                    }
+                    else
+                    {
+                        // Search for the producer definition
+                        // In MLT, producers might be defined at project level or in chains
+                        if (project.Chain != null)
                         {
-                            if (chain.Id == producerId)
+                            foreach (var chain in project.Chain)
                             {
-                                var resProp = chain.Property?.FirstOrDefault(p => p.Name == "resource");
-                                if (resProp != null)
+                                if (chain.Id == producerId)
                                 {
-                                    resourcePath = resProp.Text;
-                                    producerPaths[producerId] = resourcePath;
-                                    break;
+                                    var resProp = chain.Property?.FirstOrDefault(p => p.Name == "resource");
+                                    if (resProp != null)
+                                    {
+                                        resourcePath = resProp.Text;
+                                        producerPaths[producerId] = resourcePath;
+                                        break;
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                // Check if this resource matches the search
-                if (resourcePath != null && resourcePath.Contains(partialFilename, StringComparison.OrdinalIgnoreCase))
-                {
-                    results.Add(new FileSearchResult
+                    // Check if this resource matches the search
+                    if (resourcePath != null && resourcePath.Contains(partialFilename, StringComparison.OrdinalIgnoreCase))
                     {
-                        ProducerId = producerId,
-                        FilePath = resourcePath,
-                        PlaylistIndex = playlistIndex,
-                        PlaylistName = playlist.Name,
-                        EntryIndex = entryIndex,
-                        EntryInPoint = entry.In,
-                        EntryOutPoint = entry.Out
-                    });
+                        results.Add(new FileSearchResult
+                        {
+                            ProducerId = producerId,
+                            FilePath = resourcePath,
+                            PlaylistIndex = playlistIndex,
+                            PlaylistName = playlist.Name,
+                            EntryIndex = entryIndex,
+                            EntryInPoint = entry.In,
+                            EntryOutPoint = entry.Out,
+                            StartTime = startTime,
+                            EndTime = endTime
+                        });
+                    }
+
+                    // Add this entry's duration to cumulative time
+                    cumulativeTime = endTime;
+                    entryIndex++;
+                }
+                else if (item is Blank blank)
+                {
+                    // Add blank duration to cumulative time but don't search
+                    var blankDuration = TimeSpan.FromSeconds(blank.GetDurationSeconds(frameRate));
+                    cumulativeTime += blankDuration;
                 }
             }
         }
@@ -108,6 +134,9 @@ public class FileSearchService
         var results = new List<FileSearchResult>();
         var playlistsToSearch = playlistIndices ?? Enumerable.Range(0, project.Playlist.Count).ToList();
 
+        // Get frame rate for blank duration calculation
+        var frameRate = project.GetFrameRate();
+
         foreach (var playlistIndex in playlistsToSearch)
         {
             if (playlistIndex < 0 || playlistIndex >= project.Playlist.Count)
@@ -115,21 +144,43 @@ public class FileSearchService
 
             var playlist = project.Playlist[playlistIndex];
 
-            for (int entryIndex = 0; entryIndex < playlist.Entry.Count; entryIndex++)
-            {
-                var entry = playlist.Entry[entryIndex];
+            // Calculate timeline positions using ordered items (respects Entry/Blank order)
+            var cumulativeTime = TimeSpan.Zero;
+            var entryIndex = 0; // Track Entry index separately
 
-                if (entry.Producer == producerId)
+            foreach (var item in playlist.OrderedItems)
+            {
+                if (item is Entry entry)
                 {
-                    results.Add(new FileSearchResult
+                    // Calculate start and end times for this entry
+                    var startTime = cumulativeTime;
+                    var clipDuration = TimeSpan.FromSeconds(entry.Duration);
+                    var endTime = startTime + clipDuration;
+
+                    if (entry.Producer == producerId)
                     {
-                        ProducerId = producerId,
-                        PlaylistIndex = playlistIndex,
-                        PlaylistName = playlist.Name,
-                        EntryIndex = entryIndex,
-                        EntryInPoint = entry.In,
-                        EntryOutPoint = entry.Out
-                    });
+                        results.Add(new FileSearchResult
+                        {
+                            ProducerId = producerId,
+                            PlaylistIndex = playlistIndex,
+                            PlaylistName = playlist.Name,
+                            EntryIndex = entryIndex,
+                            EntryInPoint = entry.In,
+                            EntryOutPoint = entry.Out,
+                            StartTime = startTime,
+                            EndTime = endTime
+                        });
+                    }
+
+                    // Add this entry's duration to cumulative time
+                    cumulativeTime = endTime;
+                    entryIndex++;
+                }
+                else if (item is Blank blank)
+                {
+                    // Add blank duration to cumulative time but don't search
+                    var blankDuration = TimeSpan.FromSeconds(blank.GetDurationSeconds(frameRate));
+                    cumulativeTime += blankDuration;
                 }
             }
         }
@@ -142,10 +193,34 @@ public class FileSearchService
     /// </summary>
     public List<UniqueFileInfo> GetUniqueFiles(Mlt project, List<int>? playlistIndices = null)
     {
-        var producerIds = new HashSet<string>();
         var playlistsToSearch = playlistIndices ?? Enumerable.Range(0, project.Playlist.Count).ToList();
 
-        // Collect all unique producer IDs
+        // First, build a map of producer IDs to file paths
+        var producerToFilePath = new Dictionary<string, string>();
+
+        // Map all producers to their file paths
+        if (project.Chain != null)
+        {
+            foreach (var chain in project.Chain)
+            {
+                var resProp = chain.Property?.FirstOrDefault(p => p.Name == "resource");
+                if (resProp?.Text != null)
+                    producerToFilePath[chain.Id] = resProp.Text;
+            }
+        }
+
+        if (project.Producer != null)
+        {
+            var resProp = project.Producer.Property?.FirstOrDefault(p => p.Name == "resource");
+            if (resProp?.Text != null)
+                producerToFilePath[project.Producer.Id] = resProp.Text;
+        }
+
+        // Count usage by FILE PATH (not producer ID)
+        var filePathUsage = new Dictionary<string, int>();
+        var filePathToProducerId = new Dictionary<string, string>(); // Keep one producer ID per file for reference
+
+        // Collect all producer IDs and map to file paths
         foreach (var playlistIndex in playlistsToSearch)
         {
             if (playlistIndex < 0 || playlistIndex >= project.Playlist.Count)
@@ -154,53 +229,48 @@ public class FileSearchService
             var playlist = project.Playlist[playlistIndex];
             foreach (var entry in playlist.Entry)
             {
-                producerIds.Add(entry.Producer);
+                var producerId = entry.Producer;
+
+                // Get the file path for this producer
+                if (producerToFilePath.TryGetValue(producerId, out var filePath))
+                {
+                    // Count by file path
+                    if (!filePathUsage.ContainsKey(filePath))
+                    {
+                        filePathUsage[filePath] = 0;
+                        filePathToProducerId[filePath] = producerId; // Keep first producer ID
+                    }
+
+                    filePathUsage[filePath]++;
+                }
+                else
+                {
+                    // Unknown producer - count separately
+                    var unknownKey = $"[Unknown: {producerId}]";
+                    if (!filePathUsage.ContainsKey(unknownKey))
+                    {
+                        filePathUsage[unknownKey] = 0;
+                        filePathToProducerId[unknownKey] = producerId;
+                    }
+                    filePathUsage[unknownKey]++;
+                }
             }
         }
 
-        // Map producer IDs to file paths
+        // Create result list grouped by file path
         var results = new List<UniqueFileInfo>();
 
-        foreach (var producerId in producerIds)
+        foreach (var (filePath, usageCount) in filePathUsage)
         {
-            string? filePath = null;
-
-            // Try to find file path from chains
-            if (project.Chain != null)
-            {
-                var chain = project.Chain.FirstOrDefault(c => c.Id == producerId);
-                if (chain != null)
-                {
-                    var resProp = chain.Property?.FirstOrDefault(p => p.Name == "resource");
-                    filePath = resProp?.Text;
-                }
-            }
-
-            // Try from main producer
-            if (filePath == null && project.Producer?.Id == producerId)
-            {
-                var resProp = project.Producer.Property?.FirstOrDefault(p => p.Name == "resource");
-                filePath = resProp?.Text;
-            }
-
-            var usageCount = 0;
-            foreach (var playlistIndex in playlistsToSearch)
-            {
-                if (playlistIndex >= 0 && playlistIndex < project.Playlist.Count)
-                {
-                    usageCount += project.Playlist[playlistIndex].Entry.Count(e => e.Producer == producerId);
-                }
-            }
-
             results.Add(new UniqueFileInfo
             {
-                ProducerId = producerId,
-                FilePath = filePath ?? $"[Unknown: {producerId}]",
+                ProducerId = filePathToProducerId[filePath],
+                FilePath = filePath,
                 UsageCount = usageCount
             });
         }
 
-        return results.OrderBy(f => Path.GetFileName(f.FilePath)).ToList();
+        return results.OrderByDescending(f => f.UsageCount).ThenBy(f => Path.GetFileName(f.FilePath)).ToList();
     }
 }
 
@@ -216,8 +286,11 @@ public class FileSearchResult
     public int EntryIndex { get; set; }
     public string EntryInPoint { get; set; } = string.Empty;
     public string EntryOutPoint { get; set; } = string.Empty;
+    public TimeSpan StartTime { get; set; }
+    public TimeSpan EndTime { get; set; }
 
     public string DisplayName => FilePath != null ? Path.GetFileName(FilePath) : ProducerId;
+    public string TimelineDisplay => $"{StartTime:hh\\:mm\\:ss} \u2192 {EndTime:hh\\:mm\\:ss}";
 }
 
 /// <summary>

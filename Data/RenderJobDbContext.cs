@@ -71,6 +71,16 @@ public class RenderJobDbContext(DbContextOptions<RenderJobDbContext> options) : 
             entity.Property(e => e.MachineName)
                 .HasMaxLength(100);
 
+            entity.Property(e => e.SelectedVideoTracks)
+                .HasMaxLength(200);
+
+            entity.Property(e => e.SelectedAudioTracks)
+                .HasMaxLength(200);
+
+            // In/Out points for partial rendering (nullable)
+            entity.Property(e => e.InPoint);
+            entity.Property(e => e.OutPoint);
+
             // Set default values
             entity.Property(e => e.Status)
                 .HasDefaultValue(RenderJobStatus.Pending);

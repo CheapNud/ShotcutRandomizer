@@ -129,4 +129,22 @@ public class RenderJobRepository(RenderJobDbContext context) : IRenderJobReposit
                        j.ProcessId != currentProcessId)
             .ToListAsync();
     }
+
+    public async Task DeleteAsync(Guid jobId)
+    {
+        var job = await _context.RenderJobs
+            .FirstOrDefaultAsync(j => j.JobId == jobId);
+
+        if (job != null)
+        {
+            _context.RenderJobs.Remove(job);
+            await _context.SaveChangesAsync();
+
+            Debug.WriteLine($"Deleted job {jobId}");
+        }
+        else
+        {
+            Debug.WriteLine($"Warning: DeleteAsync found no job with ID {jobId}");
+        }
+    }
 }

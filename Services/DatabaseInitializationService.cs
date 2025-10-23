@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 using CheapShotcutRandomizer.Data;
+using System.Diagnostics;
 
 namespace CheapShotcutRandomizer.Services;
 
@@ -21,7 +23,40 @@ public class DatabaseInitializationService : IHostedService
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<RenderJobDbContext>();
 
-        await db.Database.EnsureCreatedAsync(cancellationToken);
+        // Check if database exists and has correct schema
+        var databaseExists = await db.Database.CanConnectAsync(cancellationToken);
+
+        if (databaseExists)
+        {
+            // Verify schema is up to date by checking for new columns
+            try
+            {
+                // Try to query with new columns - will fail if schema is old
+                await db.Database.ExecuteSqlRawAsync(
+                    "SELECT InPoint, OutPoint, SelectedVideoTracks, SelectedAudioTracks, FrameRate, IsTwoStageRender, IntermediatePath, OutputFileSizeBytes, IntermediateFileSizeBytes FROM RenderJobs LIMIT 1",
+                    cancellationToken);
+
+                Debug.WriteLine("Database schema is up to date");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Database schema outdated: {ex.Message}");
+                Debug.WriteLine("Recreating database with new schema...");
+
+                // Delete old database and recreate
+                await db.Database.EnsureDeletedAsync(cancellationToken);
+                await db.Database.EnsureCreatedAsync(cancellationToken);
+
+                Debug.WriteLine("Database recreated successfully");
+            }
+        }
+        else
+        {
+            // Create new database
+            await db.Database.EnsureCreatedAsync(cancellationToken);
+            Debug.WriteLine("Database created successfully");
+        }
+
         await db.EnableWalModeAsync();
     }
 

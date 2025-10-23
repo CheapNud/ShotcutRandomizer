@@ -134,4 +134,108 @@ public class RenderJob
     /// Machine name that claimed this job (for crash recovery)
     /// </summary>
     public string? MachineName { get; set; }
+
+    /// <summary>
+    /// Comma-separated list of video track indices to render (e.g., "0,1,2")
+    /// If null, render all video tracks
+    /// </summary>
+    public string? SelectedVideoTracks { get; set; }
+
+    /// <summary>
+    /// Comma-separated list of audio track indices to render (e.g., "0,1")
+    /// If null, render all audio tracks
+    /// </summary>
+    public string? SelectedAudioTracks { get; set; }
+
+    /// <summary>
+    /// In point marker (frame number). If null, render from start.
+    /// Used for MLT projects to render only a specific range.
+    /// </summary>
+    public int? InPoint { get; set; }
+
+    /// <summary>
+    /// Out point marker (frame number). If null, render to end.
+    /// Used for MLT projects to render only a specific range.
+    /// </summary>
+    public int? OutPoint { get; set; }
+
+    /// <summary>
+    /// Frame rate of the source video (for timecode conversion)
+    /// Defaults to 30.0 fps if not specified
+    /// </summary>
+    public double FrameRate { get; set; } = 30.0;
+
+    /// <summary>
+    /// Indicates this is a two-stage render job (MLT → temp video → RIFE interpolation)
+    /// When true, the source is an MLT file that needs to be rendered before RIFE processing
+    /// </summary>
+    public bool IsTwoStageRender { get; set; } = false;
+
+    /// <summary>
+    /// Path to the intermediate/temporary file for two-stage renders
+    /// Used when rendering MLT → temp file → RIFE
+    /// </summary>
+    public string? IntermediatePath { get; set; }
+
+    /// <summary>
+    /// Size of the output file in bytes (null if not yet rendered)
+    /// </summary>
+    public long? OutputFileSizeBytes { get; set; }
+
+    /// <summary>
+    /// Size of the intermediate file in bytes for two-stage renders (null if not applicable)
+    /// </summary>
+    public long? IntermediateFileSizeBytes { get; set; }
+
+    /// <summary>
+    /// Get human-readable file size string (e.g., "1.5 GB", "250 MB")
+    /// </summary>
+    public string GetOutputFileSizeFormatted()
+    {
+        if (!OutputFileSizeBytes.HasValue)
+            return "N/A";
+
+        return FormatFileSize(OutputFileSizeBytes.Value);
+    }
+
+    /// <summary>
+    /// Get human-readable intermediate file size string
+    /// </summary>
+    public string GetIntermediateFileSizeFormatted()
+    {
+        if (!IntermediateFileSizeBytes.HasValue)
+            return "N/A";
+
+        return FormatFileSize(IntermediateFileSizeBytes.Value);
+    }
+
+    /// <summary>
+    /// Format bytes to human-readable string
+    /// </summary>
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+
+        return $"{len:F2} {sizes[order]}";
+    }
+
+    /// <summary>
+    /// Convert frame number to timecode string (HH:MM:SS.mmm)
+    /// </summary>
+    public string FramesToTimecode(int frames)
+    {
+        var totalSeconds = frames / FrameRate;
+        var timeSpan = TimeSpan.FromSeconds(totalSeconds);
+
+        // Format as HH:MM:SS.mmm
+        return $"{(int)timeSpan.TotalHours:D2}:{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}.{timeSpan.Milliseconds:D3}";
+    }
 }

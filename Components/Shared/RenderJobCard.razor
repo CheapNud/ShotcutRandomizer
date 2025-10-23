@@ -19,6 +19,28 @@
             </MudText>
         </MudItem>
 
+        @* File size information *@
+        @if (Job.Status == RenderJobStatus.Completed && Job.OutputFileSizeBytes.HasValue)
+        {
+            <MudItem xs="12">
+                <MudStack Row="true" Spacing="2">
+                    <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Storage" Variant="Variant.Text">
+                        Output: @Job.GetOutputFileSizeFormatted()
+                    </MudChip>
+
+                    @if (Job.IsTwoStageRender && Job.IntermediateFileSizeBytes.HasValue)
+                    {
+                        <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Schedule" Variant="Variant.Text" Color="Color.Info">
+                            Temp: @Job.GetIntermediateFileSizeFormatted()
+                        </MudChip>
+                        <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Summarize" Variant="Variant.Text" Color="Color.Warning">
+                            Total: @FormatTotalSize()
+                        </MudChip>
+                    }
+                </MudStack>
+            </MudItem>
+        }
+
         @if (Job.Status == RenderJobStatus.Running)
         {
             <MudItem xs="12">
@@ -27,7 +49,7 @@
                                    Size="Size.Large">
                     <MudText Typo="Typo.body2">
                         @Job.ProgressPercentage.ToString("F1")%
-                        (Frame @Job.CurrentFrame/@Job.TotalFrames)
+                        (@GetProgressTimecode())
                     </MudText>
                 </MudProgressLinear>
             </MudItem>
@@ -85,12 +107,38 @@
                                Color="Color.Error" OnClick="@ShowErrorDetails">
                         View Error
                     </MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                               Color="Color.Error" OnClick="@(() => OnDelete.InvokeAsync(Job.JobId))"
+                               StartIcon="@Icons.Material.Filled.Delete">
+                        Delete
+                    </MudButton>
                 }
                 else if (Job.Status == RenderJobStatus.Completed)
                 {
                     <MudButton Size="Size.Small" Variant="Variant.Outlined"
                                Color="Color.Success" OnClick="@OpenOutputFolder">
                         Open Folder
+                    </MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                               Color="Color.Error" OnClick="@(() => OnDelete.InvokeAsync(Job.JobId))"
+                               StartIcon="@Icons.Material.Filled.Delete">
+                        Delete
+                    </MudButton>
+                }
+                else if (Job.Status == RenderJobStatus.Pending)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                               Color="Color.Error" OnClick="@(() => OnDelete.InvokeAsync(Job.JobId))"
+                               StartIcon="@Icons.Material.Filled.Delete">
+                        Delete
+                    </MudButton>
+                }
+                else if (Job.Status == RenderJobStatus.Cancelled)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                               Color="Color.Error" OnClick="@(() => OnDelete.InvokeAsync(Job.JobId))"
+                               StartIcon="@Icons.Material.Filled.Delete">
+                        Delete
                     </MudButton>
                 }
             </MudStack>
@@ -123,7 +171,23 @@
     [Parameter]
     public EventCallback<Guid> OnRetry { get; set; }
 
+    [Parameter]
+    public EventCallback<Guid> OnDelete { get; set; }
+
     private bool _showError = false;
+
+    private string GetProgressTimecode()
+    {
+        if (Job.TotalFrames.HasValue && Job.TotalFrames.Value > 0)
+        {
+            var currentTime = Job.FramesToTimecode(Job.CurrentFrame);
+            var totalTime = Job.FramesToTimecode(Job.TotalFrames.Value);
+            return $"{currentTime} / {totalTime}";
+        }
+
+        // Fallback to frame display if total frames not available
+        return $"Frame {Job.CurrentFrame}";
+    }
 
     private string GetStatusIcon() => Job.Status switch
     {
@@ -170,5 +234,25 @@
         {
             // Silently fail if can't open folder
         }
+    }
+
+    private string FormatTotalSize()
+    {
+        if (!Job.OutputFileSizeBytes.HasValue || !Job.IntermediateFileSizeBytes.HasValue)
+            return "N/A";
+
+        var totalBytes = Job.OutputFileSizeBytes.Value + Job.IntermediateFileSizeBytes.Value;
+
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = totalBytes;
+        int order = 0;
+
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+
+        return $"{len:F2} {sizes[order]}";
     }
 }

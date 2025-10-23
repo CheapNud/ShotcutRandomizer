@@ -9,12 +9,53 @@ namespace CheapShotcutRandomizer.Services;
 /// IMPORTANT: ABSOLUTELY USE NVENC - it's 8-10x FASTER than CPU encoding
 /// Perfect for RIFE frame reassembly workflow
 /// </summary>
-public class FFmpegRenderService
+public class FFmpegRenderService(SvpDetectionService svpDetection)
 {
-    public FFmpegRenderService()
+    private bool _useSvpEncoders = true; // Default to true - SVP has better FFmpeg builds
+
+    public FFmpegRenderService() : this(new SvpDetectionService())
     {
-        // Optional: Set FFmpeg binary path if not in PATH
-        // GlobalFFOptions.Configure(new FFOptions { BinaryFolder = @"C:\path\to\ffmpeg" });
+        // Parameterless constructor for backward compatibility
+    }
+
+    /// <summary>
+    /// Set whether to use SVP encoders (default: true)
+    /// </summary>
+    public void SetUseSvpEncoders(bool useSvp)
+    {
+        _useSvpEncoders = useSvp;
+        ConfigureFFmpegPath();
+    }
+
+    /// <summary>
+    /// Configure FFMpegCore to use best available FFmpeg
+    /// Priority: SVP > PATH > Shotcut
+    /// </summary>
+    public void ConfigureFFmpegPath()
+    {
+        var ffmpegPath = svpDetection.GetPreferredFFmpegPath(_useSvpEncoders);
+
+        if (ffmpegPath == null)
+        {
+            Debug.WriteLine("WARNING: FFmpeg not found in any location");
+            Debug.WriteLine("FFMpegCore operations may fail if FFmpeg is not available");
+            return;
+        }
+
+        // If it's a full path (not just "ffmpeg"), configure FFMpegCore to use that directory
+        if (Path.IsPathRooted(ffmpegPath))
+        {
+            var directory = Path.GetDirectoryName(ffmpegPath);
+            if (directory != null)
+            {
+                Debug.WriteLine($"[FFmpegRenderService] Configuring FFMpegCore to use: {directory}");
+                GlobalFFOptions.Configure(new FFOptions { BinaryFolder = directory });
+            }
+        }
+        else
+        {
+            Debug.WriteLine($"[FFmpegRenderService] Using FFmpeg from system PATH: {ffmpegPath}");
+        }
     }
 
     /// <summary>
@@ -218,41 +259,92 @@ public class FFmpegRenderService
     /// </summary>
     public async Task<bool> IsNvencAvailableAsync()
     {
-        try
+        // Priority order: SVP > PATH > Shotcut
+        var ffmpegPaths = new List<string>();
+
+        // 1. Try SVP installation first (best FFmpeg build)
+        var svp = svpDetection.DetectSvpInstallation();
+        if (svp.IsInstalled && File.Exists(svp.FFmpegPath))
         {
-            var process = new Process
+            ffmpegPaths.Add(svp.FFmpegPath);
+            Debug.WriteLine($"[FFmpegRenderService] Prioritizing SVP FFmpeg: {svp.FFmpegPath}");
+        }
+
+        // 2. Try PATH
+        ffmpegPaths.Add("ffmpeg");
+
+        // 3. Shotcut locations (fallback)
+        ffmpegPaths.Add(@"C:\Program Files\Shotcut\ffmpeg.exe");
+        ffmpegPaths.Add(@"C:\Program Files (x86)\Shotcut\ffmpeg.exe");
+        ffmpegPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Shotcut", "ffmpeg.exe"));
+        ffmpegPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Shotcut", "ffmpeg.exe"));
+
+        foreach (var ffmpegPath in ffmpegPaths)
+        {
+            try
             {
-                StartInfo = new ProcessStartInfo
+                Debug.WriteLine($"[FFmpegRenderService] Checking FFmpeg at: {ffmpegPath}");
+
+                var process = new Process
                 {
-                    FileName = "ffmpeg",
-                    Arguments = "-encoders",
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = ffmpegPath,
+                        Arguments = "-encoders",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                process.Start();
+                var output = await process.StandardOutput.ReadToEndAsync();
+                var errorOutput = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                Debug.WriteLine($"[FFmpegRenderService] FFmpeg exit code: {process.ExitCode}");
+
+                if (process.ExitCode == 0)
+                {
+                    var hasH264Nvenc = output.Contains("h264_nvenc");
+                    var hasHevcNvenc = output.Contains("hevc_nvenc");
+
+                    Debug.WriteLine($"[FFmpegRenderService] h264_nvenc found: {hasH264Nvenc}");
+                    Debug.WriteLine($"[FFmpegRenderService] hevc_nvenc found: {hasHevcNvenc}");
+
+                    if (hasH264Nvenc || hasHevcNvenc)
+                    {
+                        Debug.WriteLine($"SUCCESS: NVENC detected via {ffmpegPath} - hardware acceleration available!");
+                        return true;
+                    }
+                    else
+                    {
+                        Debug.WriteLine("NVENC not detected - FFmpeg found but NVENC encoders not available");
+                        Debug.WriteLine("This usually means NVIDIA drivers are not installed or GPU doesn't support NVENC");
+                        return false;
+                    }
                 }
-            };
-
-            process.Start();
-            var output = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
-
-            var hasNvenc = output.Contains("h264_nvenc") || output.Contains("hevc_nvenc");
-
-            if (hasNvenc)
-            {
-                Debug.WriteLine("✅ NVENC detected - hardware acceleration available!");
+                else
+                {
+                    Debug.WriteLine($"[FFmpegRenderService] FFmpeg returned error: {errorOutput}");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                Debug.WriteLine("❌ NVENC not detected - will use CPU encoding");
+                Debug.WriteLine($"[FFmpegRenderService] Failed to check {ffmpegPath}: {ex.Message}");
+                // Continue to next path
             }
-
-            return hasNvenc;
         }
-        catch
+
+        Debug.WriteLine("FAILED: FFmpeg not found in any common location - will use CPU encoding");
+        Debug.WriteLine("Checked locations:");
+        foreach (var path in ffmpegPaths)
         {
-            return false;
+            Debug.WriteLine($"  - {path}");
         }
+
+        return false;
     }
 }
 

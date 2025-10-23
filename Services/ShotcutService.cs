@@ -3,6 +3,43 @@ using CheapHelpers.Services.DataExchange.Xml;
 
 namespace CheapShotcutRandomizer.Services;
 
+/// <summary>
+/// Represents information about a track in an MLT project
+/// </summary>
+public class TrackInfo
+{
+    /// <summary>
+    /// Track index in the tractor
+    /// </summary>
+    public int Index { get; set; }
+
+    /// <summary>
+    /// Display name of the track
+    /// </summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Type of track: "video" or "audio"
+    /// </summary>
+    public string Type { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether this track is currently hidden in Shotcut
+    /// </summary>
+    public bool IsHidden { get; set; }
+
+    /// <summary>
+    /// The producer ID this track references
+    /// </summary>
+    public string ProducerId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether this is a system track (like the black background)
+    /// System tracks are required for rendering but should not be user-selectable
+    /// </summary>
+    public bool IsSystemTrack { get; set; }
+}
+
 public class ShotcutService(IXmlService xmlService)
 {
     private readonly IXmlService _xmlService = xmlService;
@@ -45,6 +82,7 @@ public class ShotcutService(IXmlService xmlService)
         if (playlistIndex < 0 || playlistIndex >= project.Playlist.Count)
             throw new ArgumentOutOfRangeException(nameof(playlistIndex));
 
+        // Clear blanks from playlist (legacy approach for backward compatibility)
         project.Playlist[playlistIndex].Blank = [];
 
         if (avoidConsecutiveSameSource)
@@ -55,6 +93,24 @@ public class ShotcutService(IXmlService xmlService)
         {
             project.Playlist[playlistIndex].Entry = [.. project.Playlist[playlistIndex].Entry.Shuffle()];
         }
+
+        // Update the Items array to reflect changes (removes blanks from ordered timeline)
+        project.Playlist[playlistIndex].Items = project.Playlist[playlistIndex].Entry.Cast<object>().ToArray();
+    }
+
+    /// <summary>
+    /// Remove all blank elements from a playlist, keeping only entries
+    /// </summary>
+    public void RemoveBlanks(Playlist playlist)
+    {
+        if (playlist == null)
+            throw new ArgumentNullException(nameof(playlist));
+
+        // Clear the Blank list
+        playlist.Blank = [];
+
+        // Update Items to only contain entries
+        playlist.Items = playlist.Entry.Cast<object>().ToArray();
     }
 
     private static List<Entry> ShuffleWithConstraints(List<Entry> entries)
@@ -146,6 +202,7 @@ public class ShotcutService(IXmlService xmlService)
         var newPlaylist = new Playlist
         {
             Entry = finalVideos,
+            Blank = [], // No blanks in generated playlists
             Id = $"playlist{project.Playlist.Count + 1}",
             Property =
             [
@@ -154,10 +211,120 @@ public class ShotcutService(IXmlService xmlService)
             ]
         };
 
+        // Remove blanks from newly generated playlist (default behavior)
+        RemoveBlanks(newPlaylist);
+
         project.Playlist.Add(newPlaylist);
         project.Tractor.First(x => x.Property.Any(y => y.Name == "shotcut"))
             .Track.Add(new Track { Producer = newPlaylist.Id });
 
         return newPlaylist;
+    }
+
+    /// <summary>
+    /// Gets user-visible tracks (excludes system tracks like black background)
+    /// System tracks are required for rendering and should not be user-selectable
+    /// </summary>
+    public List<TrackInfo> GetTracks(Mlt project)
+    {
+        if (project == null)
+            throw new ArgumentNullException(nameof(project));
+
+        var tracks = new List<TrackInfo>();
+
+        // Find the main tractor (the one with shotcut properties)
+        var mainTractor = project.Tractor?.FirstOrDefault(t =>
+            t.Property?.Any(p => p.Name == "shotcut") ?? false);
+
+        if (mainTractor?.Track == null || mainTractor.Track.Count == 0)
+            return tracks;
+
+        // In Shotcut MLT files:
+        // - First track is usually "black" (background) - this is a SYSTEM TRACK
+        // - Following tracks are the actual timeline tracks (V1, V2, A1, A2, etc.)
+        // - hide="video" means audio-only track
+        // - hide="audio" means video-only track
+        // - hide="both" or missing means both enabled
+
+        for (int i = 0; i < mainTractor.Track.Count; i++)
+        {
+            var track = mainTractor.Track[i];
+            var producerId = track.Producer;
+
+            // Check if this is a system track
+            bool isSystemTrack = IsSystemTrack(producerId);
+
+            // Skip system tracks - they should not be in the user-visible track list
+            if (isSystemTrack)
+                continue;
+
+            // Find the corresponding playlist
+            var playlist = project.Playlist?.FirstOrDefault(p => p.Id == producerId);
+            var trackName = playlist?.Name ?? producerId;
+
+            // Determine track type based on hide attribute
+            string trackType;
+            bool isHidden = false;
+
+            if (string.IsNullOrEmpty(track.Hide))
+            {
+                // No hide attribute means both video and audio are enabled
+                // Determine type by playlist properties
+                var hasVideo = playlist?.Property?.Any(p => p.Name == "shotcut:video" && p.Text == "1") ?? false;
+                var hasAudio = playlist?.Property?.Any(p => p.Name == "shotcut:audio" && p.Text == "1") ?? false;
+
+                if (hasVideo && !hasAudio)
+                    trackType = "video";
+                else if (!hasVideo && hasAudio)
+                    trackType = "audio";
+                else
+                    trackType = "video"; // Default to video for mixed tracks
+            }
+            else if (track.Hide == "video")
+            {
+                trackType = "audio"; // Video is hidden, so it's an audio track
+            }
+            else if (track.Hide == "audio")
+            {
+                trackType = "video"; // Audio is hidden, so it's a video track
+            }
+            else if (track.Hide == "both")
+            {
+                isHidden = true;
+                trackType = "video"; // Default when both are hidden
+            }
+            else
+            {
+                trackType = "video"; // Default
+            }
+
+            tracks.Add(new TrackInfo
+            {
+                Index = i,
+                Name = trackName,
+                Type = trackType,
+                IsHidden = isHidden,
+                ProducerId = producerId,
+                IsSystemTrack = false // Already filtered out system tracks above
+            });
+        }
+
+        return tracks;
+    }
+
+    /// <summary>
+    /// Determines if a track is a system track that should not be user-selectable
+    /// System tracks include:
+    /// - "black" background track (required for rendering)
+    /// - Any other special system producers
+    /// </summary>
+    private static bool IsSystemTrack(string producerId)
+    {
+        if (string.IsNullOrEmpty(producerId))
+            return false;
+
+        // The "black" producer is the primary system track
+        // It provides the background/base layer for rendering
+        return producerId.Equals("black", StringComparison.OrdinalIgnoreCase);
     }
 }

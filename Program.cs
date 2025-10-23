@@ -19,9 +19,19 @@ class Program
         var builder = new CheapAvaloniaBlazor.Hosting.HostBuilder()
             .WithTitle("Cheap Shotcut Randomizer")
             .WithSize(1000, 800)
-            .AddMudBlazor();
+            .AddMudBlazor(config =>
+            {
+                config.SnackbarConfiguration.PositionClass = MudBlazor.Defaults.Classes.Position.BottomRight;
+                config.SnackbarConfiguration.VisibleStateDuration = 2000; // 2 seconds instead of default 5
+                config.SnackbarConfiguration.ShowTransitionDuration = 200;
+                config.SnackbarConfiguration.HideTransitionDuration = 200;
+            });
 
         // Register services
+        builder.Services.AddSingleton<SvpDetectionService>();
+        builder.Services.AddSingleton<ExecutableDetectionService>();
+        builder.Services.AddSingleton<SettingsService>();
+        builder.Services.AddSingleton<ProjectStateService>(); // Singleton to persist across page navigation
         builder.Services.AddScoped<IXmlService, XmlService>();
         builder.Services.AddScoped<ShotcutService>();
         builder.Services.AddScoped<FileSearchService>();

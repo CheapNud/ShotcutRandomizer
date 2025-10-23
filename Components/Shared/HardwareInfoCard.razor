@@ -39,10 +39,104 @@
                 <text>NVENC: ~@Hardware.EstimateFFmpegRenderTime(TimeSpan.FromHours(1), true).TotalMinutes.ToString("F0") minutes</text>
             }
         </MudText>
+
+        @if (Hardware.SupportedEncoders.Any())
+        {
+            <MudDivider />
+
+            <MudText Typo="Typo.subtitle1">Hardware Encoder Support</MudText>
+
+            <MudGrid Spacing="1">
+                @foreach (var encoderGroup in GetEncodersByVendor())
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Primary">@encoderGroup.Key</MudText>
+                    </MudItem>
+
+                    @foreach (var encoder in encoderGroup.Value.OrderBy(e => e.DisplayName))
+                    {
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudPaper Class="pa-2" Elevation="0" Style="@(encoder.IsAvailable ? "background-color: var(--mud-palette-success-lighten);" : "background-color: var(--mud-palette-background-grey); opacity: 0.6;")">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudCheckBox T="bool"
+                                                 Value="@encoder.IsAvailable"
+                                                 ReadOnly="true"
+                                                 Color="@(encoder.IsAvailable ? Color.Success : Color.Default)"
+                                                 Dense="true" />
+                                    <MudStack Spacing="0">
+                                        <MudText Typo="Typo.body2" Style="font-weight: 500;">@encoder.DisplayName</MudText>
+                                        <MudText Typo="Typo.caption">
+                                            @if (encoder.IsAvailable)
+                                            {
+                                                <text>~@encoder.EstimatedSpeedupFactor.ToString("F1")x speedup</text>
+                                            }
+                                            else
+                                            {
+                                                <text>Not available</text>
+                                            }
+                                        </MudText>
+                                    </MudStack>
+                                </MudStack>
+                            </MudPaper>
+                        </MudItem>
+                    }
+                }
+            </MudGrid>
+
+            <MudExpansionPanels Elevation="0">
+                <MudExpansionPanel Text="Encoder Details" Dense="true">
+                    <MudList T="string" Dense="true">
+                        @foreach (var encoder in Hardware.SupportedEncoders.Values.OrderByDescending(e => e.IsAvailable).ThenBy(e => e.DisplayName))
+                        {
+                            <MudListItem T="string">
+                                <MudStack Spacing="1">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                        <MudIcon Icon="@(encoder.IsAvailable ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                                                 Color="@(encoder.IsAvailable ? Color.Success : Color.Default)"
+                                                 Size="Size.Small" />
+                                        <MudText Typo="Typo.body2" Style="font-weight: 500;">@encoder.DisplayName</MudText>
+                                        @if (encoder.IsAvailable)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">
+                                                @encoder.EstimatedSpeedupFactor.ToString("F1")x
+                                            </MudChip>
+                                        }
+                                    </MudStack>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @encoder.Description
+                                    </MudText>
+                                    @if (encoder.IsAvailable)
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Tertiary" Style="font-style: italic;">
+                                            Codec: @encoder.CodecName
+                                        </MudText>
+                                    }
+                                </MudStack>
+                            </MudListItem>
+                            <MudDivider />
+                        }
+                    </MudList>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
     </MudStack>
 </MudPaper>
 
 @code {
     [Parameter]
     public HardwareCapabilities Hardware { get; set; } = null!;
+
+    private Dictionary<string, List<HardwareEncoderInfo>> GetEncodersByVendor()
+    {
+        return Hardware.SupportedEncoders.Values
+            .GroupBy(e => e.VendorType)
+            .OrderBy(g => g.Key switch
+            {
+                "NVENC" => 0,
+                "AMF" => 1,
+                "QSV" => 2,
+                _ => 3
+            })
+            .ToDictionary(g => g.Key, g => g.ToList());
+    }
 }

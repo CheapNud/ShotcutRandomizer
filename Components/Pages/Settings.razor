@@ -1,0 +1,419 @@
+@page "/settings"
+@using CheapShotcutRandomizer.Models
+@using CheapShotcutRandomizer.Services
+@inject SettingsService SettingsService
+@inject SvpDetectionService SvpDetection
+@inject ISnackbar Snackbar
+
+<PageTitle>Settings - Cheap Shotcut Randomizer</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Settings</MudText>
+
+@if (_settings == null)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <MudText>Loading settings...</MudText>
+}
+else
+{
+    <MudGrid>
+        <!-- Logging Settings -->
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Description" Class="mr-2" />
+                    Logging
+                </MudText>
+                <MudSwitch @bind-Value="_settings.VerboseLogging"
+                          Label="Enable Verbose Logging"
+                          Color="Color.Primary"
+                          ThumbIcon="@(_settings.VerboseLogging ? Icons.Material.Filled.Check : null)" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                    When enabled, detailed Debug.WriteLine statements will be written for troubleshooting
+                </MudText>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Application Behavior -->
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Settings" Class="mr-2" />
+                    Application Behavior
+                </MudText>
+                <MudNumericField @bind-Value="_settings.MaxConcurrentRenders"
+                                Label="Max Concurrent Renders"
+                                Variant="Variant.Outlined"
+                                Min="1"
+                                Max="8"
+                                Class="mb-3" />
+                <MudSwitch @bind-Value="_settings.AutoStartQueue"
+                          Label="Auto-start Render Queue"
+                          Color="Color.Primary"
+                          Class="mb-2" />
+                <MudSwitch @bind-Value="_settings.ShowNotificationsOnComplete"
+                          Label="Show Notifications on Completion"
+                          Color="Color.Primary" />
+            </MudPaper>
+        </MudItem>
+
+        <!-- SVP Detection -->
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.VideoLibrary" Class="mr-2" />
+                    SmoothVideo Project (SVP) Integration
+                </MudText>
+
+                @if (_svpInstallation != null)
+                {
+                    <MudAlert Severity="@(_svpInstallation.IsInstalled ? Severity.Success : Severity.Warning)"
+                             Dense="true"
+                             Class="mb-3">
+                        @if (_svpInstallation.IsInstalled)
+                        {
+                            <MudText>SVP 4 Pro detected: @_svpInstallation.Version</MudText>
+                            <MudText Typo="Typo.caption">FFmpeg: @_svpInstallation.FFmpegVersion | Python: @_svpInstallation.PythonVersion</MudText>
+                        }
+                        else
+                        {
+                            <MudText>SVP 4 Pro not detected - will use Shotcut encoders as fallback</MudText>
+                        }
+                    </MudAlert>
+
+                    @if (_svpInstallation.IsInstalled)
+                    {
+                        <MudSwitch @bind-Value="_settings.UseSvpEncoders"
+                                  Label="Use SVP encoders (recommended)"
+                                  Color="Color.Primary"
+                                  ThumbIcon="@(_settings.UseSvpEncoders ? Icons.Material.Filled.Check : null)"
+                                  Class="mb-3" />
+
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
+                            SVP includes high-quality FFmpeg builds with better NVENC support. Recommended for best performance.
+                        </MudText>
+
+                        <MudExpansionPanels>
+                            <MudExpansionPanel Text="SVP Installation Details">
+                                <MudGrid>
+                                    <MudItem xs="12" md="6">
+                                        <MudTextField Value="@_svpInstallation.InstallPath"
+                                                     Label="Installation Path"
+                                                     Variant="Variant.Outlined"
+                                                     ReadOnly="true" />
+                                    </MudItem>
+                                    <MudItem xs="12" md="6">
+                                        <MudTextField Value="@_svpInstallation.FFmpegPath"
+                                                     Label="FFmpeg Path"
+                                                     Variant="Variant.Outlined"
+                                                     ReadOnly="true" />
+                                    </MudItem>
+                                    <MudItem xs="12" md="6">
+                                        <MudTextField Value="@_svpInstallation.PythonPath"
+                                                     Label="Python Path"
+                                                     Variant="Variant.Outlined"
+                                                     ReadOnly="true" />
+                                    </MudItem>
+                                    <MudItem xs="12" md="6">
+                                        <MudChip T="string"
+                                                Color="@(_svpInstallation.FFmpegHasNvenc ? Color.Success : Color.Warning)"
+                                                Size="Size.Small">
+                                            NVENC Support: @(_svpInstallation.FFmpegHasNvenc ? "Available" : "Not Available")
+                                        </MudChip>
+                                    </MudItem>
+                                </MudGrid>
+                            </MudExpansionPanel>
+                        </MudExpansionPanels>
+                    }
+                }
+                else
+                {
+                    <MudProgressCircular Color="Color.Primary" Size="Size.Small" Indeterminate="true" />
+                    <MudText Typo="Typo.caption">Detecting SVP installation...</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <!-- Path Settings -->
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Folder" Class="mr-2" />
+                    Custom Executable Paths (Optional)
+                </MudText>
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_settings.FFmpegPath"
+                                     Label="FFmpeg Path"
+                                     Variant="Variant.Outlined"
+                                     Adornment="Adornment.End"
+                                     AdornmentIcon="@Icons.Material.Filled.FolderOpen"
+                                     OnAdornmentClick="@(() => BrowseForFile(FileType.FFmpeg))"
+                                     HelperText="Override auto-detection" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_settings.MeltPath"
+                                     Label="Melt Path"
+                                     Variant="Variant.Outlined"
+                                     Adornment="Adornment.End"
+                                     AdornmentIcon="@Icons.Material.Filled.FolderOpen"
+                                     OnAdornmentClick="@(() => BrowseForFile(FileType.Melt))" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_settings.RifePath"
+                                     Label="RIFE Path"
+                                     Variant="Variant.Outlined"
+                                     Adornment="Adornment.End"
+                                     AdornmentIcon="@Icons.Material.Filled.FolderOpen"
+                                     OnAdornmentClick="@(() => BrowseForFile(FileType.Rife))" />
+                    </MudItem>
+                </MudGrid>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                    Priority: Custom paths > SVP installation > System PATH > Shotcut installation
+                </MudText>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Render Default Settings -->
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.VideoSettings" Class="mr-2" />
+                    Default Render Settings
+                </MudText>
+                <MudSelect @bind-Value="_settings.DefaultQuality"
+                          Label="Quality"
+                          Variant="Variant.Outlined"
+                          Class="mb-3">
+                    <MudSelectItem Value="@("Low")">Low</MudSelectItem>
+                    <MudSelectItem Value="@("Medium")">Medium</MudSelectItem>
+                    <MudSelectItem Value="@("High")">High</MudSelectItem>
+                    <MudSelectItem Value="@("Ultra")">Ultra</MudSelectItem>
+                </MudSelect>
+                <MudSelect @bind-Value="_settings.DefaultCodec"
+                          Label="Codec"
+                          Variant="Variant.Outlined"
+                          Class="mb-3">
+                    <MudSelectItem Value="@("libx264")">H.264 (libx264)</MudSelectItem>
+                    <MudSelectItem Value="@("libx265")">H.265 (libx265)</MudSelectItem>
+                    <MudSelectItem Value="@("h264_nvenc")">H.264 NVENC (NVIDIA)</MudSelectItem>
+                    <MudSelectItem Value="@("hevc_nvenc")">H.265 NVENC (NVIDIA)</MudSelectItem>
+                    <MudSelectItem Value="@("h264_qsv")">H.264 QuickSync (Intel)</MudSelectItem>
+                    <MudSelectItem Value="@("hevc_qsv")">H.265 QuickSync (Intel)</MudSelectItem>
+                </MudSelect>
+                <MudNumericField @bind-Value="_settings.DefaultCrf"
+                                Label="CRF (Constant Rate Factor)"
+                                Variant="Variant.Outlined"
+                                Min="0"
+                                Max="51"
+                                Class="mb-3"
+                                HelperText="Lower = better quality, larger file (18-28 recommended)" />
+                <MudSelect @bind-Value="_settings.DefaultPreset"
+                          Label="Encoding Preset"
+                          Variant="Variant.Outlined">
+                    <MudSelectItem Value="@("ultrafast")">Ultrafast</MudSelectItem>
+                    <MudSelectItem Value="@("superfast")">Superfast</MudSelectItem>
+                    <MudSelectItem Value="@("veryfast")">Very Fast</MudSelectItem>
+                    <MudSelectItem Value="@("faster")">Faster</MudSelectItem>
+                    <MudSelectItem Value="@("fast")">Fast</MudSelectItem>
+                    <MudSelectItem Value="@("medium")">Medium</MudSelectItem>
+                    <MudSelectItem Value="@("slow")">Slow</MudSelectItem>
+                    <MudSelectItem Value="@("slower")">Slower</MudSelectItem>
+                    <MudSelectItem Value="@("veryslow")">Very Slow</MudSelectItem>
+                </MudSelect>
+            </MudPaper>
+        </MudItem>
+
+        <!-- RIFE Default Settings -->
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Tune" Class="mr-2" />
+                    Default RIFE Settings
+                </MudText>
+                <MudSelect @bind-Value="_settings.DefaultRifeModel"
+                          Label="RIFE Model"
+                          Variant="Variant.Outlined"
+                          Class="mb-3">
+                    <MudSelectItem Value="@(46)">rife-v4.6 (Recommended)</MudSelectItem>
+                    <MudSelectItem Value="@(47)">rife-v4.7</MudSelectItem>
+                    <MudSelectItem Value="@(48)">rife-v4.8</MudSelectItem>
+                    <MudSelectItem Value="@(49)">rife-v4.9</MudSelectItem>
+                    <MudSelectItem Value="@(415)">rife-v4.15 (Latest)</MudSelectItem>
+                </MudSelect>
+                <MudNumericField @bind-Value="_settings.DefaultRifeThreads"
+                                Label="Thread Count"
+                                Variant="Variant.Outlined"
+                                Min="1"
+                                Max="32"
+                                Class="mb-3"
+                                HelperText="Number of threads for RIFE processing" />
+                <MudSwitch @bind-Value="_settings.DefaultRifeUhdMode"
+                          Label="UHD Mode (4K+)"
+                          Color="Color.Primary"
+                          Class="mb-2" />
+                <MudSwitch @bind-Value="_settings.DefaultRifeTtaMode"
+                          Label="TTA Mode (Higher Quality)"
+                          Color="Color.Primary" />
+            </MudPaper>
+        </MudItem>
+
+        <!-- Action Buttons -->
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack Row="true" Spacing="3">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.Save"
+                              OnClick="SaveSettingsAsync">
+                        Save Settings
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                              Color="Color.Secondary"
+                              StartIcon="@Icons.Material.Filled.Refresh"
+                              OnClick="ReloadSettingsAsync">
+                        Reload
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                              Color="Color.Warning"
+                              StartIcon="@Icons.Material.Filled.RestartAlt"
+                              OnClick="ResetToDefaultsAsync">
+                        Reset to Defaults
+                    </MudButton>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Text"
+                              Color="Color.Info"
+                              StartIcon="@Icons.Material.Filled.FolderOpen"
+                              OnClick="OpenSettingsFolder">
+                        Open Settings Folder
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private AppSettings? _settings;
+    private SvpInstallation? _svpInstallation;
+
+    private enum FileType
+    {
+        FFmpeg,
+        Melt,
+        Rife
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSettingsAsync();
+        DetectSvpInstallation();
+    }
+
+    private void DetectSvpInstallation()
+    {
+        try
+        {
+            _svpInstallation = SvpDetection.DetectSvpInstallation();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error detecting SVP: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private async Task LoadSettingsAsync()
+    {
+        try
+        {
+            _settings = await SettingsService.LoadSettingsAsync();
+            LogVerbose("Settings loaded in UI");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading settings: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        if (_settings == null) return;
+
+        try
+        {
+            await SettingsService.SaveSettingsAsync(_settings);
+            Snackbar.Add("Settings saved successfully", Severity.Success);
+            LogVerbose("Settings saved from UI");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving settings: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ReloadSettingsAsync()
+    {
+        await LoadSettingsAsync();
+        Snackbar.Add("Settings reloaded from file", Severity.Info);
+    }
+
+    private async Task ResetToDefaultsAsync()
+    {
+        try
+        {
+            await SettingsService.ResetToDefaultsAsync();
+            await LoadSettingsAsync();
+            Snackbar.Add("Settings reset to defaults", Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error resetting settings: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void OpenSettingsFolder()
+    {
+        try
+        {
+            var folderPath = Path.GetDirectoryName(SettingsService.GetSettingsFilePath());
+            if (folderPath != null)
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = folderPath,
+                    UseShellExecute = true
+                });
+                LogVerbose($"Opened settings folder: {folderPath}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error opening folder: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void BrowseForFile(FileType fileType)
+    {
+        // [Inference] File browser dialog would require platform-specific implementation
+        // For now, show helper message
+        var fileName = fileType switch
+        {
+            FileType.FFmpeg => "ffmpeg.exe",
+            FileType.Melt => "melt.exe",
+            FileType.Rife => "rife-ncnn-vulkan.exe",
+            _ => "executable"
+        };
+
+        Snackbar.Add($"Please manually enter the path to {fileName}", Severity.Info);
+        LogVerbose($"Browse requested for {fileType}");
+    }
+
+    private void LogVerbose(string message)
+    {
+        if (_settings?.VerboseLogging == true)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Settings Page] {message}");
+        }
+    }
+}

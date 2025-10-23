@@ -6,6 +6,7 @@ using CheapShotcutRandomizer.Models;
 using CheapShotcutRandomizer.Data.Repositories;
 using Polly;
 using Polly.Retry;
+using CheapShotcutRandomizer.Services.RIFE;
 
 namespace CheapShotcutRandomizer.Services.Queue;
 
@@ -314,61 +315,31 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
 
             FireStatusChanged(jobId, RenderJobStatus.Running, 0, 0);
 
-            // Deserialize render settings
-            var settings = JsonSerializer.Deserialize<MeltRenderSettings>(renderJob.RenderSettings);
-            if (settings == null)
+            // Execute render based on type
+            bool renderSuccess;
+
+            if (renderJob.RenderType == RenderType.MltProject)
             {
-                throw new InvalidOperationException("Failed to deserialize render settings");
+                // Standard MLT render
+                renderSuccess = await ExecuteMltRenderAsync(renderJob, jobCts.Token, scope, jobId);
             }
-
-            // Create progress reporter
-            var startTime = DateTime.UtcNow;
-            var lastProgressUpdate = DateTime.UtcNow;
-            var progress = new Progress<RenderProgress>(renderProgress =>
+            else if (renderJob.RenderType == RenderType.RifeInterpolation)
             {
-                // Throttle database updates to every 1 second
-                var now = DateTime.UtcNow;
-                if ((now - lastProgressUpdate).TotalSeconds >= 1)
+                if (renderJob.IsTwoStageRender)
                 {
-                    lastProgressUpdate = now;
-
-                    // Update database (fire and forget for performance)
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            using var updateScope = _serviceProvider.CreateScope();
-                            var updateRepo = updateScope.ServiceProvider.GetRequiredService<IRenderJobRepository>();
-                            await updateRepo.UpdateProgressAsync(jobId, renderProgress.Percentage, renderProgress.CurrentFrame);
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine($"Error updating progress: {ex.Message}");
-                        }
-                    });
+                    // Two-stage: MLT → temp file → RIFE
+                    renderSuccess = await ExecuteTwoStageRenderAsync(renderJob, jobCts.Token, scope, jobId);
                 }
-
-                // Always fire progress event (UI can decide how to handle)
-                var elapsed = now - startTime;
-                TimeSpan? remaining = null;
-                if (renderProgress.Percentage > 0)
+                else
                 {
-                    var totalEstimated = elapsed.TotalSeconds / (renderProgress.Percentage / 100.0);
-                    remaining = TimeSpan.FromSeconds(totalEstimated - elapsed.TotalSeconds);
+                    // Direct RIFE interpolation
+                    renderSuccess = await ExecuteRifeRenderAsync(renderJob, jobCts.Token, scope, jobId);
                 }
-
-                FireProgressChanged(jobId, RenderJobStatus.Running, renderProgress.Percentage,
-                    renderProgress.CurrentFrame, null, elapsed, remaining);
-            });
-
-            // Execute the render
-            var meltService = new MeltRenderService();
-            var renderSuccess = await meltService.RenderAsync(
-                renderJob.SourceVideoPath,
-                renderJob.OutputPath,
-                settings,
-                progress,
-                jobCts.Token);
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unknown render type: {renderJob.RenderType}");
+            }
 
             // Update final status
             if (renderSuccess)
@@ -376,6 +347,15 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
                 renderJob.Status = RenderJobStatus.Completed;
                 renderJob.ProgressPercentage = 100;
                 renderJob.CompletedAt = DateTime.UtcNow;
+
+                // Record output file size
+                if (File.Exists(renderJob.OutputPath))
+                {
+                    var fileInfo = new FileInfo(renderJob.OutputPath);
+                    renderJob.OutputFileSizeBytes = fileInfo.Length;
+                    Debug.WriteLine($"Output file size: {renderJob.GetOutputFileSizeFormatted()}");
+                }
+
                 await repository.UpdateAsync(renderJob);
 
                 FireStatusChanged(jobId, RenderJobStatus.Completed, 100, renderJob.CurrentFrame);
@@ -383,7 +363,7 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
             }
             else
             {
-                throw new Exception("Render failed (melt returned non-zero exit code)");
+                throw new Exception("Render failed");
             }
         }
         catch (OperationCanceledException)
@@ -444,6 +424,275 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
             }
             jobCts?.Dispose();
         }
+    }
+
+    private async Task<bool> ExecuteMltRenderAsync(
+        RenderJob renderJob,
+        CancellationToken cancellationToken,
+        IServiceScope scope,
+        Guid jobId)
+    {
+        Debug.WriteLine($"Executing MLT render for job {jobId}");
+
+        // Deserialize MLT settings
+        var settings = JsonSerializer.Deserialize<MeltRenderSettings>(renderJob.RenderSettings);
+        if (settings == null)
+        {
+            throw new InvalidOperationException("Failed to deserialize MLT render settings");
+        }
+
+        // Create progress reporter
+        var progress = CreateRenderProgressReporter(jobId);
+
+        // Execute the render
+        var xmlService = scope.ServiceProvider.GetRequiredService<CheapHelpers.Services.DataExchange.Xml.IXmlService>();
+        var shotcutService = scope.ServiceProvider.GetRequiredService<ShotcutService>();
+        var settingsService = scope.ServiceProvider.GetRequiredService<SettingsService>();
+        var appSettings = await settingsService.LoadSettingsAsync();
+
+        var meltService = new MeltRenderService(
+            meltExecutable: appSettings.MeltPath,
+            xmlService: xmlService,
+            shotcutService: shotcutService);
+
+        return await meltService.RenderAsync(
+            renderJob.SourceVideoPath,
+            renderJob.OutputPath,
+            settings,
+            progress,
+            cancellationToken,
+            renderJob.InPoint,
+            renderJob.OutPoint,
+            renderJob.SelectedVideoTracks,
+            renderJob.SelectedAudioTracks);
+    }
+
+    private async Task<bool> ExecuteRifeRenderAsync(
+        RenderJob renderJob,
+        CancellationToken cancellationToken,
+        IServiceScope scope,
+        Guid jobId)
+    {
+        Debug.WriteLine($"Executing RIFE render for job {jobId}");
+
+        // Deserialize FFmpeg settings
+        var ffmpegSettings = JsonSerializer.Deserialize<FFmpegRenderSettings>(renderJob.RenderSettings);
+        if (ffmpegSettings == null)
+        {
+            throw new InvalidOperationException("Failed to deserialize FFmpeg render settings");
+        }
+
+        // Get RIFE services
+        var rifePipeline = scope.ServiceProvider.GetRequiredService<RifeVideoProcessingPipeline>();
+
+        // Create RIFE pipeline options
+        var pipelineOptions = new RifePipelineOptions
+        {
+            RifeOptions = new RifeOptions
+            {
+                InterpolationPasses = renderJob.RifeSettings?.InterpolationMultiplier switch
+                {
+                    2 => 1,
+                    4 => 2,
+                    8 => 3,
+                    _ => 1
+                }
+            },
+            FFmpegSettings = ffmpegSettings,
+            InputFps = (int)renderJob.FrameRate,
+            ValidateFrameCounts = true,
+            KeepTemporaryFiles = false,
+            UseHardwareDecode = true
+        };
+
+        // Create progress reporter (convert VideoProcessingProgress to RenderProgress)
+        var progress = new Progress<VideoProcessingProgress>(vProgress =>
+        {
+            var percentage = vProgress.OverallProgress;
+            FireProgressChanged(jobId, RenderJobStatus.Running, percentage, 0, null,
+                TimeSpan.Zero, null);
+        });
+
+        return await rifePipeline.ProcessVideoAsync(
+            renderJob.SourceVideoPath,
+            renderJob.OutputPath,
+            pipelineOptions,
+            progress,
+            cancellationToken);
+    }
+
+    private async Task<bool> ExecuteTwoStageRenderAsync(
+        RenderJob renderJob,
+        CancellationToken cancellationToken,
+        IServiceScope scope,
+        Guid jobId)
+    {
+        Debug.WriteLine($"Executing two-stage render (MLT → RIFE) for job {jobId}");
+
+        if (string.IsNullOrEmpty(renderJob.IntermediatePath))
+        {
+            throw new InvalidOperationException("IntermediatePath not set for two-stage render");
+        }
+
+        try
+        {
+            // STAGE 1: Render MLT to temporary file
+            Debug.WriteLine($"Stage 1/2: Rendering MLT to temp file: {renderJob.IntermediatePath}");
+
+            // Deserialize MLT settings from JSON
+            renderJob.MeltSettings = JsonSerializer.Deserialize<MeltRenderSettings>(renderJob.RenderSettings);
+            if (renderJob.MeltSettings == null)
+            {
+                throw new InvalidOperationException("Failed to deserialize MLT render settings for two-stage render");
+            }
+
+            var xmlService = scope.ServiceProvider.GetRequiredService<CheapHelpers.Services.DataExchange.Xml.IXmlService>();
+            var shotcutService = scope.ServiceProvider.GetRequiredService<ShotcutService>();
+            var settingsService = scope.ServiceProvider.GetRequiredService<SettingsService>();
+            var appSettings = await settingsService.LoadSettingsAsync();
+
+            var meltService = new MeltRenderService(
+                meltExecutable: appSettings.MeltPath,
+                xmlService: xmlService,
+                shotcutService: shotcutService);
+
+            // Stage 1 progress: 0-50%
+            var stage1Progress = new Progress<RenderProgress>(rProgress =>
+            {
+                var adjustedPercentage = rProgress.Percentage * 0.5; // Scale to 0-50%
+                FireProgressChanged(jobId, RenderJobStatus.Running, adjustedPercentage, rProgress.CurrentFrame,
+                    null, TimeSpan.Zero, null);
+            });
+
+            var stage1Success = await meltService.RenderAsync(
+                renderJob.SourceVideoPath,
+                renderJob.IntermediatePath,
+                renderJob.MeltSettings!,
+                stage1Progress,
+                cancellationToken,
+                renderJob.InPoint,
+                renderJob.OutPoint,
+                renderJob.SelectedVideoTracks,
+                renderJob.SelectedAudioTracks);
+
+            if (!stage1Success)
+            {
+                Debug.WriteLine("Stage 1 (MLT render) failed");
+                return false;
+            }
+
+            Debug.WriteLine($"Stage 1 complete. Temp file: {renderJob.IntermediatePath}");
+
+            // Record intermediate file size
+            if (File.Exists(renderJob.IntermediatePath))
+            {
+                var tempFileInfo = new FileInfo(renderJob.IntermediatePath);
+                renderJob.IntermediateFileSizeBytes = tempFileInfo.Length;
+                Debug.WriteLine($"Intermediate file size: {renderJob.GetIntermediateFileSizeFormatted()}");
+            }
+
+            // STAGE 2: RIFE interpolation on temp file
+            Debug.WriteLine($"Stage 2/2: RIFE interpolation");
+
+            var rifePipeline = scope.ServiceProvider.GetRequiredService<RifeVideoProcessingPipeline>();
+
+            var pipelineOptions = new RifePipelineOptions
+            {
+                RifeOptions = new RifeOptions
+                {
+                    InterpolationPasses = renderJob.RifeSettings?.InterpolationMultiplier switch
+                    {
+                        2 => 1,
+                        4 => 2,
+                        8 => 3,
+                        _ => 1
+                    }
+                },
+                FFmpegSettings = renderJob.FFmpegSettings!,
+                InputFps = (int)renderJob.FrameRate,
+                ValidateFrameCounts = true,
+                KeepTemporaryFiles = false,
+                UseHardwareDecode = true
+            };
+
+            // Stage 2 progress: 50-100%
+            var stage2Progress = new Progress<VideoProcessingProgress>(vProgress =>
+            {
+                var adjustedPercentage = 50 + (vProgress.OverallProgress * 0.5); // Scale to 50-100%
+                FireProgressChanged(jobId, RenderJobStatus.Running, adjustedPercentage, 0, null,
+                    TimeSpan.Zero, null);
+            });
+
+            var stage2Success = await rifePipeline.ProcessVideoAsync(
+                renderJob.IntermediatePath,
+                renderJob.OutputPath,
+                pipelineOptions,
+                stage2Progress,
+                cancellationToken);
+
+            Debug.WriteLine($"Stage 2 complete. Success: {stage2Success}");
+
+            return stage2Success;
+        }
+        finally
+        {
+            // Clean up temporary file
+            if (!string.IsNullOrEmpty(renderJob.IntermediatePath) && File.Exists(renderJob.IntermediatePath))
+            {
+                try
+                {
+                    File.Delete(renderJob.IntermediatePath);
+                    Debug.WriteLine($"Cleaned up temp file: {renderJob.IntermediatePath}");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Failed to delete temp file: {ex.Message}");
+                }
+            }
+        }
+    }
+
+    private IProgress<RenderProgress> CreateRenderProgressReporter(Guid jobId)
+    {
+        var startTime = DateTime.UtcNow;
+        var lastProgressUpdate = DateTime.UtcNow;
+
+        return new Progress<RenderProgress>(renderProgress =>
+        {
+            // Throttle database updates to every 1 second
+            var now = DateTime.UtcNow;
+            if ((now - lastProgressUpdate).TotalSeconds >= 1)
+            {
+                lastProgressUpdate = now;
+
+                // Update database (fire and forget for performance)
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var updateScope = _serviceProvider.CreateScope();
+                        var updateRepo = updateScope.ServiceProvider.GetRequiredService<IRenderJobRepository>();
+                        await updateRepo.UpdateProgressAsync(jobId, renderProgress.Percentage, renderProgress.CurrentFrame);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Error updating progress: {ex.Message}");
+                    }
+                });
+            }
+
+            // Always fire progress event (UI can decide how to handle)
+            var elapsed = now - startTime;
+            TimeSpan? remaining = null;
+            if (renderProgress.Percentage > 0)
+            {
+                var totalEstimated = elapsed.TotalSeconds / (renderProgress.Percentage / 100.0);
+                remaining = TimeSpan.FromSeconds(totalEstimated - elapsed.TotalSeconds);
+            }
+
+            FireProgressChanged(jobId, RenderJobStatus.Running, renderProgress.Percentage,
+                renderProgress.CurrentFrame, null, elapsed, remaining);
+        });
     }
 
     private async Task RecoverCrashedJobsAsync()

@@ -53,4 +53,9 @@ public interface IRenderJobRepository
     /// (Status=Running but ProcessId doesn't match current process)
     /// </summary>
     Task<List<RenderJob>> GetCrashedJobsAsync(int currentProcessId, string machineName);
+
+    /// <summary>
+    /// Delete a job from the database
+    /// </summary>
+    Task DeleteAsync(Guid jobId);
 }

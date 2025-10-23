@@ -9,18 +9,27 @@
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
     <MudStack Spacing="3">
-        <!-- Header with Hardware Info -->
-        <MudGrid>
-            <MudItem xs="12" md="8">
-                <MudText Typo="Typo.h4">Render Queue</MudText>
-            </MudItem>
-            <MudItem xs="12" md="4">
-                @if (_hardware != null)
-                {
-                    <HardwareInfoCard Hardware="_hardware" />
-                }
-            </MudItem>
-        </MudGrid>
+        <!-- Page Title -->
+        <MudText Typo="Typo.h4">Render Queue</MudText>
+
+        <!-- Hardware Capabilities Card (Full Width at Top) -->
+        @if (_isLoadingHardware)
+        {
+            <MudPaper Class="pa-4">
+                <MudStack Spacing="2">
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="30%" Height="32px" />
+                    <MudDivider />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="60%" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="55%" />
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="60px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="80%" />
+                </MudStack>
+            </MudPaper>
+        }
+        else if (_hardware != null)
+        {
+            <HardwareInfoCard Hardware="_hardware" />
+        }
 
         <!-- Action Buttons -->
         <MudPaper Class="pa-4">
@@ -28,13 +37,15 @@
                 <MudButton Variant="Variant.Filled"
                            Color="Color.Primary"
                            StartIcon="@Icons.Material.Filled.Add"
-                           OnClick="@OpenAddJobDialog">
+                           OnClick="@OpenAddJobDialog"
+                           Disabled="@_isLoadingJobs">
                     Add Job
                 </MudButton>
                 <MudButton Variant="Variant.Outlined"
                            Color="Color.Default"
                            StartIcon="@Icons.Material.Filled.Refresh"
-                           OnClick="@RefreshJobs">
+                           OnClick="@RefreshJobs"
+                           Disabled="@_isLoadingJobs">
                     Refresh
                 </MudButton>
                 <MudSpacer />
@@ -50,15 +61,58 @@
         <!-- Tabs for different job states -->
         <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
             <MudTabPanel Text="Active" Icon="@Icons.Material.Filled.PlayArrow" BadgeData="@_activeJobs.Count" BadgeColor="Color.Primary">
-                @if (_isLoading)
+                @if (_isLoadingJobs)
                 {
-                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                    <!-- Skeleton placeholders while loading -->
+                    <MudStack Spacing="2">
+                        @for (int i = 0; i < 2; i++)
+                        {
+                            <MudPaper Class="pa-4">
+                                <MudGrid>
+                                    <MudItem xs="12">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudSkeleton SkeletonType="SkeletonType.Circle" Width="24px" Height="24px" />
+                                            <MudSkeleton SkeletonType="SkeletonType.Text" Width="40%" />
+                                            <MudSpacer />
+                                            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="80px" Height="24px" />
+                                        </MudStack>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="70%" />
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="10px" />
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudStack Row="true" Spacing="2">
+                                            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="80px" Height="36px" />
+                                            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="80px" Height="36px" />
+                                        </MudStack>
+                                    </MudItem>
+                                </MudGrid>
+                            </MudPaper>
+                        }
+                    </MudStack>
                 }
                 else if (_activeJobs.Count == 0)
                 {
-                    <MudAlert Severity="Severity.Info">
-                        No active jobs. Click "Add Job" to start rendering!
-                    </MudAlert>
+                    <!-- Improved empty state -->
+                    <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height: 300px;" Spacing="4">
+                        <MudIcon Icon="@Icons.Material.Filled.VideoLibrary" Size="Size.Large" Color="Color.Default" Style="font-size: 96px; opacity: 0.3;" />
+                        <MudText Typo="Typo.h5" Align="Align.Center">Ready to render!</MudText>
+                        <MudText Typo="Typo.body1" Align="Align.Center" Color="Color.Default">
+                            Click "Add Job" to get started with your first video render.
+                        </MudText>
+                        <MudPaper Class="pa-4" Style="background-color: var(--mud-palette-background-grey); max-width: 600px;">
+                            <MudText Typo="Typo.body2" Align="Align.Center">
+                                <strong>Quick Tip:</strong> Make sure your source video is ready and choose your desired output format.
+                                @if (_hardware?.NvencAvailable == true)
+                                {
+                                    <text>Your NVENC hardware acceleration will make rendering fast!</text>
+                                }
+                            </MudText>
+                        </MudPaper>
+                    </MudStack>
                 }
                 else
                 {
@@ -69,22 +123,53 @@
                                            OnPause="@HandlePause"
                                            OnResume="@HandleResume"
                                            OnCancel="@HandleCancel"
-                                           OnRetry="@HandleRetry" />
+                                           OnRetry="@HandleRetry"
+                                           OnDelete="@HandleDelete" />
                         }
                     </MudStack>
                 }
             </MudTabPanel>
 
             <MudTabPanel Text="Completed" Icon="@Icons.Material.Filled.CheckCircle" BadgeData="@_completedJobs.Count" BadgeColor="Color.Success">
-                @if (_isLoading)
+                @if (_isLoadingJobs)
                 {
-                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                    <!-- Skeleton placeholders while loading -->
+                    <MudStack Spacing="2">
+                        @for (int i = 0; i < 2; i++)
+                        {
+                            <MudPaper Class="pa-4">
+                                <MudGrid>
+                                    <MudItem xs="12">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudSkeleton SkeletonType="SkeletonType.Circle" Width="24px" Height="24px" />
+                                            <MudSkeleton SkeletonType="SkeletonType.Text" Width="40%" />
+                                            <MudSpacer />
+                                            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="80px" Height="24px" />
+                                        </MudStack>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="70%" />
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudStack Row="true" Spacing="2">
+                                            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100px" Height="36px" />
+                                        </MudStack>
+                                    </MudItem>
+                                </MudGrid>
+                            </MudPaper>
+                        }
+                    </MudStack>
                 }
                 else if (_completedJobs.Count == 0)
                 {
-                    <MudAlert Severity="Severity.Info">
-                        No completed jobs yet.
-                    </MudAlert>
+                    <!-- Improved empty state -->
+                    <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height: 300px;" Spacing="4">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircleOutline" Size="Size.Large" Color="Color.Success" Style="font-size: 96px; opacity: 0.3;" />
+                        <MudText Typo="Typo.h5" Align="Align.Center">No completed jobs yet</MudText>
+                        <MudText Typo="Typo.body1" Align="Align.Center" Color="Color.Default">
+                            Completed renders will appear here once they finish processing.
+                        </MudText>
+                    </MudStack>
                 }
                 else
                 {
@@ -95,22 +180,54 @@
                                            OnPause="@HandlePause"
                                            OnResume="@HandleResume"
                                            OnCancel="@HandleCancel"
-                                           OnRetry="@HandleRetry" />
+                                           OnRetry="@HandleRetry"
+                                           OnDelete="@HandleDelete" />
                         }
                     </MudStack>
                 }
             </MudTabPanel>
 
             <MudTabPanel Text="Failed" Icon="@Icons.Material.Filled.Error" BadgeData="@_failedJobs.Count" BadgeColor="Color.Error">
-                @if (_isLoading)
+                @if (_isLoadingJobs)
                 {
-                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                    <!-- Skeleton placeholders while loading -->
+                    <MudStack Spacing="2">
+                        @for (int i = 0; i < 2; i++)
+                        {
+                            <MudPaper Class="pa-4">
+                                <MudGrid>
+                                    <MudItem xs="12">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudSkeleton SkeletonType="SkeletonType.Circle" Width="24px" Height="24px" />
+                                            <MudSkeleton SkeletonType="SkeletonType.Text" Width="40%" />
+                                            <MudSpacer />
+                                            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="80px" Height="24px" />
+                                        </MudStack>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="70%" />
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudStack Row="true" Spacing="2">
+                                            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="80px" Height="36px" />
+                                            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100px" Height="36px" />
+                                        </MudStack>
+                                    </MudItem>
+                                </MudGrid>
+                            </MudPaper>
+                        }
+                    </MudStack>
                 }
                 else if (_failedJobs.Count == 0)
                 {
-                    <MudAlert Severity="Severity.Success">
-                        No failed jobs - everything's running smoothly!
-                    </MudAlert>
+                    <!-- Improved empty state -->
+                    <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height: 300px;" Spacing="4">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Color="Color.Success" Style="font-size: 96px; opacity: 0.3;" />
+                        <MudText Typo="Typo.h5" Align="Align.Center" Color="Color.Success">All systems go!</MudText>
+                        <MudText Typo="Typo.body1" Align="Align.Center" Color="Color.Default">
+                            No failed jobs - everything is running smoothly.
+                        </MudText>
+                    </MudStack>
                 }
                 else
                 {
@@ -121,7 +238,8 @@
                                            OnPause="@HandlePause"
                                            OnResume="@HandleResume"
                                            OnCancel="@HandleCancel"
-                                           OnRetry="@HandleRetry" />
+                                           OnRetry="@HandleRetry"
+                                           OnDelete="@HandleDelete" />
                         }
                     </MudStack>
                 }
@@ -135,20 +253,32 @@
     private List<RenderJob> _completedJobs = new();
     private List<RenderJob> _failedJobs = new();
     private HardwareCapabilities? _hardware;
-    private bool _isLoading = true;
+    private bool _isLoadingHardware = true;
+    private bool _isLoadingJobs = true;
     private System.Threading.Timer? _refreshTimer;
 
     protected override async Task OnInitializedAsync()
     {
-        // Detect hardware
-        _hardware = await HardwareService.DetectHardwareAsync();
-
-        // Load initial data
-        await LoadJobs();
-
         // Subscribe to events for real-time updates
         QueueService.ProgressChanged += OnProgressChanged;
         QueueService.StatusChanged += OnStatusChanged;
+
+        // Run hardware detection and job loading in parallel for better performance
+        var hardwareTask = Task.Run(async () =>
+        {
+            _hardware = await HardwareService.DetectHardwareAsync();
+            _isLoadingHardware = false;
+            await InvokeAsync(StateHasChanged);
+        });
+
+        var jobsTask = Task.Run(async () =>
+        {
+            await LoadJobs();
+            _isLoadingJobs = false;
+            await InvokeAsync(StateHasChanged);
+        });
+
+        await Task.WhenAll(hardwareTask, jobsTask);
 
         // Start polling timer as fallback (every 2 seconds)
         _refreshTimer = new System.Threading.Timer(
@@ -156,8 +286,6 @@
             null,
             TimeSpan.Zero,
             TimeSpan.FromSeconds(2));
-
-        _isLoading = false;
     }
 
     private async Task LoadJobs()
@@ -182,9 +310,10 @@
 
     private async Task RefreshJobs()
     {
-        _isLoading = true;
+        _isLoadingJobs = true;
+        StateHasChanged();
         await LoadJobs();
-        _isLoading = false;
+        _isLoadingJobs = false;
         StateHasChanged();
         Snackbar.Add("Jobs refreshed", Severity.Success);
     }
@@ -363,6 +492,25 @@
         catch (Exception ex)
         {
             Snackbar.Add($"Error retrying job: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task HandleDelete(Guid jobId)
+    {
+        try
+        {
+            // Delete from database
+            await Repository.DeleteAsync(jobId);
+
+            // Reload jobs
+            await LoadJobs();
+            StateHasChanged();
+
+            Snackbar.Add("Job deleted", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting job: {ex.Message}", Severity.Error);
         }
     }
 
