@@ -77,6 +77,9 @@ public class RenderJobDbContext(DbContextOptions<RenderJobDbContext> options) : 
             entity.Property(e => e.SelectedAudioTracks)
                 .HasMaxLength(200);
 
+            entity.Property(e => e.CurrentStage)
+                .HasMaxLength(100);
+
             // In/Out points for partial rendering (nullable)
             entity.Property(e => e.InPoint);
             entity.Property(e => e.OutPoint);

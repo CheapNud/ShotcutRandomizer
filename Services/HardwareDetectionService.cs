@@ -250,6 +250,35 @@ public class HardwareDetectionService(SvpDetectionService svpDetection)
         }
     }
 
+    private bool IsIntelCpu()
+    {
+        try
+        {
+            var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_Processor");
+            var results = searcher.Get();
+
+            foreach (ManagementObject obj in results)
+            {
+                var cpuName = obj["Name"]?.ToString() ?? "";
+                var manufacturer = obj["Manufacturer"]?.ToString() ?? "";
+
+                // Check both manufacturer and name for Intel
+                var isIntel = manufacturer.Contains("Intel", StringComparison.OrdinalIgnoreCase) ||
+                             cpuName.Contains("Intel", StringComparison.OrdinalIgnoreCase);
+
+                Debug.WriteLine($"CPU Vendor Check: {cpuName} - Manufacturer: {manufacturer} - Is Intel: {isIntel}");
+                return isIntel;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error detecting CPU vendor: {ex.Message}");
+            return false;
+        }
+    }
+
     private async Task DetectHardwareEncodersAsync(HardwareCapabilities capabilities)
     {
         // Define all encoders we want to check with their metadata
@@ -338,6 +367,9 @@ public class HardwareDetectionService(SvpDetectionService svpDetection)
             return;
         }
 
+        // Detect CPU vendor for QSV validation
+        var isIntelCpu = IsIntelCpu();
+
         // Check which encoders are available
         try
         {
@@ -362,8 +394,29 @@ public class HardwareDetectionService(SvpDetectionService svpDetection)
             {
                 foreach (var encoder in encodersToCheck)
                 {
-                    encoder.Value.IsAvailable = output.Contains(encoder.Key);
-                    Debug.WriteLine($"Hardware encoder {encoder.Key}: {(encoder.Value.IsAvailable ? "Available" : "Not available")}");
+                    // Check if encoder exists in FFmpeg
+                    var foundInFfmpeg = output.Contains(encoder.Key);
+
+                    // Apply vendor-specific validation
+                    if (encoder.Value.VendorType == "QSV")
+                    {
+                        // QSV requires Intel CPU - ignore FFmpeg listing if not Intel
+                        if (!isIntelCpu)
+                        {
+                            encoder.Value.IsAvailable = false;
+                            Debug.WriteLine($"Hardware encoder {encoder.Key}: Disabled (Intel CPU required, detected: {capabilities.CpuName})");
+                        }
+                        else
+                        {
+                            encoder.Value.IsAvailable = foundInFfmpeg;
+                            Debug.WriteLine($"Hardware encoder {encoder.Key}: {(encoder.Value.IsAvailable ? "Available" : "Not available")}");
+                        }
+                    }
+                    else
+                    {
+                        encoder.Value.IsAvailable = foundInFfmpeg;
+                        Debug.WriteLine($"Hardware encoder {encoder.Key}: {(encoder.Value.IsAvailable ? "Available" : "Not available")}");
+                    }
                 }
             }
         }

@@ -1,8 +1,10 @@
 @page "/settings"
 @using CheapShotcutRandomizer.Models
 @using CheapShotcutRandomizer.Services
+@using CheapAvaloniaBlazor.Services
 @inject SettingsService SettingsService
 @inject SvpDetectionService SvpDetection
+@inject IDesktopInteropService DesktopInterop
 @inject ISnackbar Snackbar
 
 <PageTitle>Settings - Cheap Shotcut Randomizer</PageTitle>
@@ -142,7 +144,7 @@ else
                     Custom Executable Paths (Optional)
                 </MudText>
                 <MudGrid>
-                    <MudItem xs="12" md="4">
+                    <MudItem xs="12" md="6" lg="3">
                         <MudTextField @bind-Value="_settings.FFmpegPath"
                                      Label="FFmpeg Path"
                                      Variant="Variant.Outlined"
@@ -151,7 +153,16 @@ else
                                      OnAdornmentClick="@(() => BrowseForFile(FileType.FFmpeg))"
                                      HelperText="Override auto-detection" />
                     </MudItem>
-                    <MudItem xs="12" md="4">
+                    <MudItem xs="12" md="6" lg="3">
+                        <MudTextField @bind-Value="_settings.FFprobePath"
+                                     Label="FFprobe Path"
+                                     Variant="Variant.Outlined"
+                                     Adornment="Adornment.End"
+                                     AdornmentIcon="@Icons.Material.Filled.FolderOpen"
+                                     OnAdornmentClick="@(() => BrowseForFile(FileType.FFprobe))"
+                                     HelperText="Required for RIFE validation" />
+                    </MudItem>
+                    <MudItem xs="12" md="6" lg="3">
                         <MudTextField @bind-Value="_settings.MeltPath"
                                      Label="Melt Path"
                                      Variant="Variant.Outlined"
@@ -159,17 +170,91 @@ else
                                      AdornmentIcon="@Icons.Material.Filled.FolderOpen"
                                      OnAdornmentClick="@(() => BrowseForFile(FileType.Melt))" />
                     </MudItem>
-                    <MudItem xs="12" md="4">
+                    <MudItem xs="12" md="6" lg="3">
                         <MudTextField @bind-Value="_settings.RifePath"
-                                     Label="RIFE Path"
+                                     Label="RIFE Folder Path"
                                      Variant="Variant.Outlined"
                                      Adornment="Adornment.End"
                                      AdornmentIcon="@Icons.Material.Filled.FolderOpen"
-                                     OnAdornmentClick="@(() => BrowseForFile(FileType.Rife))" />
+                                     OnAdornmentClick="@(() => BrowseForFile(FileType.Rife))"
+                                     HelperText="Python RIFE folder" />
                     </MudItem>
                 </MudGrid>
                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
                     Priority: Custom paths > SVP installation > System PATH > Shotcut installation
+                </MudText>
+
+                <!-- Download Links Section -->
+                <MudDivider Class="my-3" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Download" Class="mr-1" />
+                    Dependencies Downloads
+                </MudText>
+                <MudGrid>
+                    <MudItem xs="12" md="6" lg="3">
+                        <MudButton Variant="Variant.Text"
+                                  Color="Color.Primary"
+                                  FullWidth="true"
+                                  StartIcon="@Icons.Material.Filled.Launch"
+                                  Href="https://shotcut.org/download/"
+                                  Target="_blank">
+                            Shotcut (Melt/MLT)
+                        </MudButton>
+                    </MudItem>
+                    <MudItem xs="12" md="6" lg="3">
+                        <MudButton Variant="Variant.Text"
+                                  Color="Color.Primary"
+                                  FullWidth="true"
+                                  StartIcon="@Icons.Material.Filled.Launch"
+                                  Href="https://www.svp-team.com/get/"
+                                  Target="_blank">
+                            SVP 4 Pro (RIFE)
+                        </MudButton>
+                    </MudItem>
+                    <MudItem xs="12" md="6" lg="3">
+                        <MudButton Variant="Variant.Text"
+                                  Color="Color.Primary"
+                                  FullWidth="true"
+                                  StartIcon="@Icons.Material.Filled.Launch"
+                                  Href="https://ffmpeg.org/download.html"
+                                  Target="_blank">
+                            FFmpeg/FFprobe
+                        </MudButton>
+                    </MudItem>
+                    <MudItem xs="12" md="6" lg="3">
+                        <MudButton Variant="Variant.Text"
+                                  Color="Color.Primary"
+                                  FullWidth="true"
+                                  StartIcon="@Icons.Material.Filled.Launch"
+                                  Href="https://www.python.org/downloads/"
+                                  Target="_blank">
+                            Python (for RIFE)
+                        </MudButton>
+                    </MudItem>
+                    <MudItem xs="12" md="6" lg="3">
+                        <MudButton Variant="Variant.Text"
+                                  Color="Color.Secondary"
+                                  FullWidth="true"
+                                  StartIcon="@Icons.Material.Filled.Launch"
+                                  Href="https://github.com/vapoursynth/vapoursynth/releases"
+                                  Target="_blank">
+                            VapourSynth (for SVP)
+                        </MudButton>
+                    </MudItem>
+                    <MudItem xs="12" md="6" lg="3">
+                        <MudButton Variant="Variant.Text"
+                                  Color="Color.Secondary"
+                                  FullWidth="true"
+                                  StartIcon="@Icons.Material.Filled.Launch"
+                                  Href="https://github.com/hzwer/Practical-RIFE"
+                                  Target="_blank">
+                            RIFE (Standalone)
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                    Note: Shotcut includes FFmpeg/FFprobe. SVP includes RIFE with TensorRT support.
+                    VapourSynth is required for SVP RIFE integration (vspipe must be in PATH).
                 </MudText>
             </MudPaper>
         </MudItem>
@@ -300,6 +385,7 @@ else
     private enum FileType
     {
         FFmpeg,
+        FFprobe,
         Melt,
         Rife
     }
@@ -393,20 +479,104 @@ else
         }
     }
 
-    private void BrowseForFile(FileType fileType)
+    private async Task BrowseForFile(FileType fileType)
     {
-        // [Inference] File browser dialog would require platform-specific implementation
-        // For now, show helper message
-        var fileName = fileType switch
+        // Special handling for RIFE folder selection
+        if (fileType == FileType.Rife)
         {
-            FileType.FFmpeg => "ffmpeg.exe",
-            FileType.Melt => "melt.exe",
-            FileType.Rife => "rife-ncnn-vulkan.exe",
-            _ => "executable"
+            // For now, use file dialog and ask user to select any file in the RIFE folder
+            // In the future, this should use a folder browser dialog
+            var rifeOptions = new CheapAvaloniaBlazor.Models.FileDialogOptions
+            {
+                Title = "Select any file in the RIFE folder (e.g., inference_video.py or rife.dll)",
+                Filters = new List<CheapAvaloniaBlazor.Models.FileFilter>
+                {
+                    new() { Name = "RIFE Files", Extensions = new[] { "*.py", "*.dll" } },
+                    new() { Name = "All Files", Extensions = new[] { "*.*" } }
+                }
+            };
+
+            try
+            {
+                var selectedFile = await DesktopInterop.OpenFileDialogAsync(rifeOptions);
+
+                if (!string.IsNullOrEmpty(selectedFile))
+                {
+                    // Extract the folder from the file path
+                    var folderPath = Path.GetDirectoryName(selectedFile);
+                    if (!string.IsNullOrEmpty(folderPath))
+                    {
+                        _settings!.RifePath = folderPath;
+                        Snackbar.Add($"RIFE folder set to: {Path.GetFileName(folderPath)}", Severity.Success);
+                        LogVerbose($"Selected RIFE folder: {folderPath}");
+                        StateHasChanged();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error selecting RIFE folder: {ex.Message}", Severity.Error);
+                LogVerbose($"Error in BrowseForFile (RIFE): {ex}");
+            }
+            return;
+        }
+
+        // Normal file selection for other executables
+        var (title, filters, settingProperty) = fileType switch
+        {
+            FileType.FFmpeg => (
+                "Select FFmpeg Executable",
+                new List<CheapAvaloniaBlazor.Models.FileFilter>
+                {
+                    new() { Name = "FFmpeg Executable", Extensions = new[] { "*.exe" } },
+                    new() { Name = "All Files", Extensions = new[] { "*.*" } }
+                },
+                (Func<string, Task>)(path => { _settings!.FFmpegPath = path; return Task.CompletedTask; })
+            ),
+            FileType.FFprobe => (
+                "Select FFprobe Executable",
+                new List<CheapAvaloniaBlazor.Models.FileFilter>
+                {
+                    new() { Name = "FFprobe Executable", Extensions = new[] { "*.exe" } },
+                    new() { Name = "All Files", Extensions = new[] { "*.*" } }
+                },
+                (Func<string, Task>)(path => { _settings!.FFprobePath = path; return Task.CompletedTask; })
+            ),
+            FileType.Melt => (
+                "Select Melt Executable",
+                new List<CheapAvaloniaBlazor.Models.FileFilter>
+                {
+                    new() { Name = "Melt Executable", Extensions = new[] { "*.exe" } },
+                    new() { Name = "All Files", Extensions = new[] { "*.*" } }
+                },
+                (Func<string, Task>)(path => { _settings!.MeltPath = path; return Task.CompletedTask; })
+            ),
+            _ => throw new ArgumentException($"Unknown file type: {fileType}")
         };
 
-        Snackbar.Add($"Please manually enter the path to {fileName}", Severity.Info);
-        LogVerbose($"Browse requested for {fileType}");
+        var options = new CheapAvaloniaBlazor.Models.FileDialogOptions
+        {
+            Title = title,
+            Filters = filters
+        };
+
+        try
+        {
+            var selectedFile = await DesktopInterop.OpenFileDialogAsync(options);
+
+            if (!string.IsNullOrEmpty(selectedFile))
+            {
+                await settingProperty(selectedFile);
+                Snackbar.Add($"Path updated to: {Path.GetFileName(selectedFile)}", Severity.Success);
+                LogVerbose($"Selected {fileType}: {selectedFile}");
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error selecting file: {ex.Message}", Severity.Error);
+            LogVerbose($"Error in BrowseForFile: {ex}");
+        }
     }
 
     private void LogVerbose(string message)

@@ -50,41 +50,6 @@
                 <MudSelectItem Value="RenderType.RifeInterpolation" T="RenderType">RIFE Interpolation</MudSelectItem>
             </MudSelect>
 
-            @* Track Selection - Show for MLT Project OR RIFE with MLT source, but only if ShowTrackSelection is true *@
-            @if (ShowTrackSelection && (_renderType == RenderType.MltProject || (_renderType == RenderType.RifeInterpolation && _loadedMltProject != null)) && _tracks.Any())
-            {
-                <MudDivider />
-                <MudText Typo="Typo.subtitle2">Track Selection</MudText>
-
-                @if (_videoTracks.Any())
-                {
-                    <MudText Typo="Typo.body2" Color="Color.Primary">Video Tracks</MudText>
-                    <MudStack Row="true" Spacing="2">
-                        @foreach (var track in _videoTracks)
-                        {
-                            <MudCheckBox @bind-Value="track.Selected"
-                                         Label="@track.DisplayName"
-                                         Color="Color.Primary"
-                                         T="bool" />
-                        }
-                    </MudStack>
-                }
-
-                @if (_audioTracks.Any())
-                {
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">Audio Tracks</MudText>
-                    <MudStack Row="true" Spacing="2">
-                        @foreach (var track in _audioTracks)
-                        {
-                            <MudCheckBox @bind-Value="track.Selected"
-                                         Label="@track.DisplayName"
-                                         Color="Color.Secondary"
-                                         T="bool" />
-                        }
-                    </MudStack>
-                }
-            }
-
             @* MLT Encoding Settings - Show ONLY for MLT Project *@
             @if (_renderType == RenderType.MltProject)
             {
@@ -122,6 +87,73 @@
                            Style="width: 100%;">
                     Quality (CRF): @_mltCrf (Lower = Better)
                 </MudSlider>
+            }
+
+            @* RIFE Settings - Show ONLY for RIFE Interpolation *@
+            @if (_renderType == RenderType.RifeInterpolation)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">RIFE Interpolation Settings</MudText>
+
+                <MudSlider @bind-Value="_rifeMultiplier"
+                           Min="2"
+                           Max="8"
+                           Step="1"
+                           Color="Color.Primary"
+                           Style="width: 100%;">
+                    Interpolation Multiplier: @_rifeMultiplier x
+                </MudSlider>
+
+                <MudNumericField @bind-Value="_rifeTargetFps"
+                                 Label="Target FPS"
+                                 Variant="Variant.Outlined"
+                                 Min="30"
+                                 Max="240"
+                                 T="int" />
+
+                <MudSelect @bind-Value="_rifeQuality"
+                           Label="Quality Preset"
+                           Variant="Variant.Outlined"
+                           T="string">
+                    <MudSelectItem Value="@("draft")" T="string">Draft (Fastest)</MudSelectItem>
+                    <MudSelectItem Value="@("medium")" T="string">Medium (Recommended)</MudSelectItem>
+                    <MudSelectItem Value="@("high")" T="string">High Quality</MudSelectItem>
+                </MudSelect>
+            }
+
+            @* Track Selection - Show for MLT Project OR RIFE with MLT source, but only if ShowTrackSelection is true *@
+            @if (ShowTrackSelection && (_renderType == RenderType.MltProject || (_renderType == RenderType.RifeInterpolation && _loadedMltProject != null)) && _tracks.Any())
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Track Selection</MudText>
+
+                @if (_videoTracks.Any())
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Primary">Video Tracks</MudText>
+                    <MudStack Row="true" Spacing="2">
+                        @foreach (var track in _videoTracks)
+                        {
+                            <MudCheckBox @bind-Value="track.Selected"
+                                         Label="@track.DisplayName"
+                                         Color="Color.Primary"
+                                         T="bool" />
+                        }
+                    </MudStack>
+                }
+
+                @if (_audioTracks.Any())
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Audio Tracks</MudText>
+                    <MudStack Row="true" Spacing="2">
+                        @foreach (var track in _audioTracks)
+                        {
+                            <MudCheckBox @bind-Value="track.Selected"
+                                         Label="@track.DisplayName"
+                                         Color="Color.Secondary"
+                                         T="bool" />
+                        }
+                    </MudStack>
+                }
             }
 
             @* Render Range - Show for MLT Project OR RIFE with MLT source, but only if ShowRenderRange is true *@
@@ -168,37 +200,6 @@
                         Leave empty to render from start or to end
                     </MudText>
                 }
-            }
-
-            @* RIFE Settings - Show ONLY for RIFE Interpolation *@
-            @if (_renderType == RenderType.RifeInterpolation)
-            {
-                <MudText Typo="Typo.subtitle2">RIFE Interpolation Settings</MudText>
-
-                <MudSlider @bind-Value="_rifeMultiplier"
-                           Min="2"
-                           Max="8"
-                           Step="1"
-                           Color="Color.Primary"
-                           Style="width: 100%;">
-                    Interpolation Multiplier: @_rifeMultiplier x
-                </MudSlider>
-
-                <MudNumericField @bind-Value="_rifeTargetFps"
-                                 Label="Target FPS"
-                                 Variant="Variant.Outlined"
-                                 Min="30"
-                                 Max="240"
-                                 T="int" />
-
-                <MudSelect @bind-Value="_rifeQuality"
-                           Label="Quality Preset"
-                           Variant="Variant.Outlined"
-                           T="string">
-                    <MudSelectItem Value="@("draft")" T="string">Draft (Fastest)</MudSelectItem>
-                    <MudSelectItem Value="@("medium")" T="string">Medium (Recommended)</MudSelectItem>
-                    <MudSelectItem Value="@("high")" T="string">High Quality</MudSelectItem>
-                </MudSelect>
             }
 
             @if (!string.IsNullOrEmpty(_estimatedTime))

@@ -8,6 +8,7 @@ using CheapHelpers.Services.DataExchange.Xml;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.EntityFrameworkCore;
+using System.Runtime.InteropServices;
 
 namespace CheapShotcutRandomizer;
 
@@ -37,13 +38,26 @@ class Program
         builder.Services.AddScoped<FileSearchService>();
 
         // Video rendering services
-        builder.Services.AddScoped<FFmpegRenderService>();
+        // FFmpegRenderService is Singleton to ensure FFMpegCore is configured once on startup
+        builder.Services.AddSingleton<FFmpegRenderService>();
         builder.Services.AddScoped<MeltRenderService>();
         builder.Services.AddSingleton<HardwareDetectionService>();
 
         // RIFE services
         builder.Services.AddScoped<CheapShotcutRandomizer.Services.RIFE.RifeInterpolationService>(sp =>
-            new CheapShotcutRandomizer.Services.RIFE.RifeInterpolationService("rife-ncnn-vulkan.exe"));
+        {
+            var settingsService = sp.GetService<SettingsService>();
+            if (settingsService != null)
+            {
+                var settings = settingsService.LoadSettingsAsync().GetAwaiter().GetResult();
+                var rifePath = settings.RifePath ?? "";
+
+                // Auto-detect Python (handled in RifeInterpolationService constructor)
+                return new CheapShotcutRandomizer.Services.RIFE.RifeInterpolationService(rifePath);
+            }
+
+            return new CheapShotcutRandomizer.Services.RIFE.RifeInterpolationService();
+        });
         builder.Services.AddScoped<CheapShotcutRandomizer.Services.RIFE.RifeVideoProcessingPipeline>();
 
         // Utility services
@@ -75,7 +89,8 @@ class Program
         builder.Services.AddHostedService(sp =>
             sp.GetRequiredService<RenderQueueService>());
 
-        // Database initialization hosted service (runs after app starts)
+        // Initialization hosted services (run after app starts)
+        builder.Services.AddHostedService<FFmpegInitializationService>(); // Initialize FFmpeg first
         builder.Services.AddHostedService<DatabaseInitializationService>();
 
         // Configure graceful shutdown

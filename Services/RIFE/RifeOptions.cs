@@ -85,4 +85,61 @@ public class RifeOptions
     /// Calculate output frame multiplier based on passes
     /// </summary>
     public int GetFrameMultiplier() => (int)Math.Pow(2, InterpolationPasses);
+
+    // Additional properties for Python-based RIFE (inference_video.py)
+
+    /// <summary>
+    /// Direct interpolation multiplier (2, 4, 8, etc.)
+    /// Used by Python RIFE instead of passes
+    /// </summary>
+    public int InterpolationMultiplier
+    {
+        get => GetFrameMultiplier();
+        set => InterpolationPasses = (int)Math.Log2(value);
+    }
+
+    /// <summary>
+    /// Model number for Python RIFE (46 = rife-v4.6, etc.)
+    /// </summary>
+    public int ModelNumber
+    {
+        get
+        {
+            // Extract number from model name (e.g., "rife-v4.6" -> 46)
+            var match = System.Text.RegularExpressions.Regex.Match(ModelName, @"v?(\d+)\.?(\d*)");
+            if (match.Success)
+            {
+                var major = match.Groups[1].Value;
+                var minor = match.Groups[2].Value.Length > 0 ? match.Groups[2].Value : "0";
+                return int.Parse(major + minor);
+            }
+            return 46; // Default to 4.6
+        }
+        set
+        {
+            // Convert number to model name (e.g., 46 -> "rife-v4.6")
+            var major = value / 10;
+            var minor = value % 10;
+            ModelName = $"rife-v{major}.{minor}";
+        }
+    }
+
+    /// <summary>
+    /// Target output frame rate (for Python RIFE)
+    /// </summary>
+    public int TargetFps { get; set; } = 60;
+
+    /// <summary>
+    /// Resolution scale factor (for Python RIFE)
+    /// </summary>
+    public double Scale { get; set; } = 1.0;
+
+    /// <summary>
+    /// Alias for UhMode (UHD mode)
+    /// </summary>
+    public bool UhdMode
+    {
+        get => UhMode;
+        set => UhMode = value;
+    }
 }

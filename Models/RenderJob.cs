@@ -188,6 +188,11 @@ public class RenderJob
     public long? IntermediateFileSizeBytes { get; set; }
 
     /// <summary>
+    /// Current stage for two-stage renders (e.g., "Stage 1: MLT Render", "Stage 2: RIFE Interpolation")
+    /// </summary>
+    public string? CurrentStage { get; set; }
+
+    /// <summary>
     /// Get human-readable file size string (e.g., "1.5 GB", "250 MB")
     /// </summary>
     public string GetOutputFileSizeFormatted()

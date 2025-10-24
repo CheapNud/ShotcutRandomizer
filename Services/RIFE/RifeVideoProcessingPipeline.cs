@@ -45,6 +45,17 @@ public class RifeVideoProcessingPipeline
         Debug.WriteLine($"Output: {outputPath}");
         Debug.WriteLine($"Interpolation: {options.RifeOptions.GetFrameMultiplier()}x ({options.RifeOptions.InterpolationPasses} passes)");
 
+        // Validate RIFE executable exists before starting pipeline
+        if (!_rifeService.IsRifeAvailable())
+        {
+            Debug.WriteLine("ERROR: RIFE executable not found or not working");
+            Debug.WriteLine("Please ensure RIFE is installed and the path is correctly configured in settings");
+            Debug.WriteLine("Supported variants:");
+            Debug.WriteLine("  - rife-ncnn-vulkan.exe (Vulkan - works on most GPUs)");
+            Debug.WriteLine("  - rife-tensorrt.exe (TensorRT - RTX 20/30/40 series only, faster)");
+            return false;
+        }
+
         using var tempManager = new TemporaryFileManager();
 
         try
@@ -308,7 +319,8 @@ public class RifeVideoProcessingPipeline
             outputFramesDir,
             options.RifeOptions,
             stageProgress,
-            cancellationToken);
+            cancellationToken,
+            options.FFmpegSettings.FFmpegPath);
 
         if (!success)
         {
@@ -387,7 +399,7 @@ public class RifeVideoProcessingPipeline
         IProgress<double>? progress,
         CancellationToken cancellationToken)
     {
-        var framePattern = Path.Combine(framesFolder, "%06d.png");
+        var framePattern = Path.Combine(framesFolder, "frame_%06d.png");
 
         try
         {
@@ -405,9 +417,7 @@ public class RifeVideoProcessingPipeline
                     .WithCustomArgument($"-preset {settings.NvencPreset}")
                     .WithCustomArgument($"-rc {settings.RateControl}")
                     .WithCustomArgument($"-cq {settings.Quality}")
-                    .WithCustomArgument("-pix_fmt yuv420p")
-                    .WithCustomArgument("-hwaccel cuda")
-                    .WithCustomArgument("-hwaccel_output_format cuda"));
+                    .WithCustomArgument("-pix_fmt yuv420p"));
             }
             else
             {

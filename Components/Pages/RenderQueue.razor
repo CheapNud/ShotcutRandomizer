@@ -31,6 +31,69 @@
             <HardwareInfoCard Hardware="_hardware" />
         }
 
+        <!-- Queue Status and Control -->
+        <MudPaper Class="pa-4">
+            <MudGrid AlignItems="Center">
+                <MudItem xs="12" sm="6">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        @if (_isQueuePaused)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.PauseCircle" Color="Color.Warning" Size="Size.Large" />
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.h6" Color="Color.Warning">Queue PAUSED</MudText>
+                                <MudText Typo="Typo.caption">Jobs will not start processing until queue is started</MudText>
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.PlayCircle" Color="Color.Success" Size="Size.Large" />
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.h6" Color="Color.Success">Queue RUNNING</MudText>
+                                <MudText Typo="Typo.caption">Jobs will start processing automatically</MudText>
+                            </MudStack>
+                        }
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudStack Row="true" Justify="Justify.FlexEnd" AlignItems="AlignItems.Center" Spacing="2">
+                        @if (_isQueuePaused)
+                        {
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Success"
+                                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                                       OnClick="@StartQueue"
+                                       Disabled="@_isLoadingJobs">
+                                Start Queue
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Warning"
+                                       StartIcon="@Icons.Material.Filled.Pause"
+                                       OnClick="@StopQueue"
+                                       Disabled="@_isLoadingJobs">
+                                Pause Queue
+                            </MudButton>
+                        }
+
+                        @if (_queueStats != null)
+                        {
+                            <MudChip T="string" Color="Color.Info" Size="Size.Small">
+                                @_queueStats.PendingCount pending
+                            </MudChip>
+                            @if (_queueStats.RunningCount > 0)
+                            {
+                                <MudChip T="string" Color="Color.Primary" Size="Size.Small">
+                                    @_queueStats.RunningCount running
+                                </MudChip>
+                            }
+                        }
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
         <!-- Action Buttons -->
         <MudPaper Class="pa-4">
             <MudStack Row="true" Spacing="2">
@@ -254,6 +317,10 @@
     private List<RenderJob> _failedJobs = new();
     private HardwareCapabilities? _hardware;
     private bool _isLoadingHardware = true;
+
+    // Queue control state
+    private bool _isQueuePaused = true;
+    private QueueStatistics? _queueStats;
     private bool _isLoadingJobs = true;
     private System.Threading.Timer? _refreshTimer;
 
@@ -262,6 +329,11 @@
         // Subscribe to events for real-time updates
         QueueService.ProgressChanged += OnProgressChanged;
         QueueService.StatusChanged += OnStatusChanged;
+        QueueService.QueueStatusChanged += OnQueueStatusChanged;
+
+        // Get initial queue status
+        _isQueuePaused = QueueService.IsQueuePaused;
+        _queueStats = await QueueService.GetQueueStatisticsAsync();
 
         // Run hardware detection and job loading in parallel for better performance
         var hardwareTask = Task.Run(async () =>
@@ -295,12 +367,14 @@
             var activeTask = QueueService.GetActiveJobsAsync();
             var completedTask = QueueService.GetCompletedJobsAsync();
             var failedTask = QueueService.GetFailedJobsAsync();
+            var statsTask = QueueService.GetQueueStatisticsAsync();
 
-            await Task.WhenAll(activeTask, completedTask, failedTask);
+            await Task.WhenAll(activeTask, completedTask, failedTask, statsTask);
 
             _activeJobs = activeTask.Result.ToList();
             _completedJobs = completedTask.Result.ToList();
             _failedJobs = failedTask.Result.ToList();
+            _queueStats = statsTask.Result;
         }
         catch (Exception ex)
         {
@@ -399,7 +473,27 @@
             var jobId = await QueueService.AddJobAsync(renderJob);
             await LoadJobs();
             StateHasChanged();
-            Snackbar.Add("Job added to queue successfully!", Severity.Success);
+
+            // Notify user about job addition and queue status
+            if (_isQueuePaused)
+            {
+                Snackbar.Add("Job added to queue successfully!", Severity.Success);
+                Snackbar.Add("Remember to start the queue to begin processing", Severity.Info, config =>
+                {
+                    config.RequireInteraction = true;
+                    config.Action = "Start Queue";
+                    config.ActionColor = Color.Success;
+                    config.OnClick = snackbar =>
+                    {
+                        StartQueue();
+                        return Task.CompletedTask;
+                    };
+                });
+            }
+            else
+            {
+                Snackbar.Add("Job added and will start processing soon", Severity.Success);
+            }
         }
         catch (Exception ex)
         {
@@ -514,11 +608,38 @@
         }
     }
 
+    private void StartQueue()
+    {
+        QueueService.StartQueue();
+        _isQueuePaused = false;
+        StateHasChanged();
+        Snackbar.Add("Queue started - jobs will now begin processing", Severity.Success);
+    }
+
+    private void StopQueue()
+    {
+        QueueService.StopQueue();
+        _isQueuePaused = true;
+        StateHasChanged();
+        Snackbar.Add("Queue paused - new jobs will wait until queue is started", Severity.Warning);
+    }
+
+    private async void OnQueueStatusChanged(object? sender, bool isPaused)
+    {
+        await InvokeAsync(async () =>
+        {
+            _isQueuePaused = isPaused;
+            _queueStats = await QueueService.GetQueueStatisticsAsync();
+            StateHasChanged();
+        });
+    }
+
     public void Dispose()
     {
         // CRITICAL: Unsubscribe from events to prevent memory leaks
         QueueService.ProgressChanged -= OnProgressChanged;
         QueueService.StatusChanged -= OnStatusChanged;
+        QueueService.QueueStatusChanged -= OnQueueStatusChanged;
 
         // Dispose timer
         _refreshTimer?.Dispose();

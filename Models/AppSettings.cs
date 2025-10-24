@@ -13,8 +13,16 @@ public class AppSettings
 
     // Path Settings
     public string FFmpegPath { get; set; } = "ffmpeg";
+    public string FFprobePath { get; set; } = "ffprobe"; // Separate path for ffprobe (usually same directory as ffmpeg)
     public string MeltPath { get; set; } = "melt";
     public string RifePath { get; set; } = "rife-ncnn-vulkan.exe";
+    public string RifeVariant { get; set; } = "Vulkan"; // "Vulkan" or "TensorRT"
+
+    // Helper property to get the correct RIFE executable name based on variant
+    public string GetRifeExecutableName()
+    {
+        return RifeVariant == "TensorRT" ? "rife-tensorrt.exe" : "rife-ncnn-vulkan.exe";
+    }
 
     // Render Default Settings
     public string DefaultQuality { get; set; } = "High";

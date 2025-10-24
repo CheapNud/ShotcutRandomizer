@@ -351,7 +351,7 @@ public class RifeExamples
         Console.WriteLine("RIFE is available!");
 
         // List available models
-        var models = _rifeService.GetAvailableModels();
+        var models = RifeInterpolationService.GetAvailableModels();
         Console.WriteLine("\nAvailable RIFE models:");
         foreach (var model in models)
         {

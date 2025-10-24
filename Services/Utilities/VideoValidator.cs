@@ -147,13 +147,19 @@ public class VideoValidator
             return validationResult;
         }
 
-        // Check frame count matches expected
-        if (frameFiles.Count != expectedFrameCount)
+        // Check frame count matches expected (allow off-by-one due to rounding differences)
+        var frameDifference = Math.Abs(frameFiles.Count - expectedFrameCount);
+        if (frameDifference > 1)
         {
             validationResult.IsValid = false;
-            validationResult.ErrorMessage = $"Frame count mismatch: expected {expectedFrameCount}, found {frameFiles.Count}";
+            validationResult.ErrorMessage = $"Frame count mismatch: expected {expectedFrameCount}, found {frameFiles.Count} (difference: {frameDifference})";
             Debug.WriteLine($"Frame validation failed: {validationResult.ErrorMessage}");
             return validationResult;
+        }
+        else if (frameDifference == 1)
+        {
+            // Allow off-by-one but warn about it
+            Debug.WriteLine($"Warning: Frame count slightly off (expected {expectedFrameCount}, found {frameFiles.Count}) - continuing anyway");
         }
 
         // Check for sequential naming (optional - just warn if missing)
@@ -202,7 +208,13 @@ public class VideoValidator
     public async Task<int> CalculateExpectedFrameCountAsync(string videoPath, double fps)
     {
         var mediaInfo = await FFProbe.AnalyseAsync(videoPath);
-        return (int)Math.Ceiling(mediaInfo.Duration.TotalSeconds * fps);
+
+        // Calculate from duration * fps
+        // Use Floor instead of Ceiling to match FFmpeg's behavior
+        // FFmpeg extracts exact frames, not rounded up
+        var calculatedFrames = (int)Math.Floor(mediaInfo.Duration.TotalSeconds * fps);
+        Debug.WriteLine($"Calculated frame count: {calculatedFrames} (duration: {mediaInfo.Duration.TotalSeconds}s, fps: {fps})");
+        return calculatedFrames;
     }
 }
 

@@ -23,8 +23,16 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
     private readonly object _runningJobsLock = new();
     private readonly ResiliencePipeline _retryPipeline;
 
+    // Queue control - starts paused by default to prevent immediate encoding
+    private volatile bool _queuePaused = true;
+    private readonly SemaphoreSlim _pauseSemaphore = new(0); // Starts with 0 available slots (paused)
+
     public event EventHandler<RenderProgressEventArgs>? ProgressChanged;
     public event EventHandler<RenderProgressEventArgs>? StatusChanged;
+    public event EventHandler<bool>? QueueStatusChanged;
+
+    // Expose queue status
+    public bool IsQueuePaused => _queuePaused;
 
     public RenderQueueService(
         IServiceProvider serviceProvider,
@@ -52,7 +60,7 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        Debug.WriteLine("RenderQueueService starting...");
+        Debug.WriteLine("RenderQueueService starting... (Queue initially PAUSED)");
 
         // Perform crash recovery on startup
         await RecoverCrashedJobsAsync();
@@ -62,6 +70,17 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
         {
             try
             {
+                // If queue is paused, wait for it to be resumed
+                if (_queuePaused)
+                {
+                    Debug.WriteLine("Queue is paused. Waiting for resume signal...");
+                    await _pauseSemaphore.WaitAsync(stoppingToken);
+
+                    // Double-check we weren't stopped while waiting
+                    if (stoppingToken.IsCancellationRequested)
+                        break;
+                }
+
                 // Dequeue the next work item
                 var workItem = await _taskQueue.DequeueAsync(stoppingToken);
 
@@ -274,6 +293,69 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
         return true;
     }
 
+    /// <summary>
+    /// Start the render queue to begin processing jobs
+    /// </summary>
+    public void StartQueue()
+    {
+        if (!_queuePaused)
+        {
+            Debug.WriteLine("Queue is already running");
+            return;
+        }
+
+        Debug.WriteLine("Starting render queue...");
+        _queuePaused = false;
+        _pauseSemaphore.Release(); // Signal the processing loop to continue
+        QueueStatusChanged?.Invoke(this, false); // false = not paused = running
+        Debug.WriteLine("Render queue started");
+    }
+
+    /// <summary>
+    /// Stop/pause the render queue to prevent processing new jobs
+    /// NOTE: Currently running jobs will continue to completion
+    /// </summary>
+    public void StopQueue()
+    {
+        if (_queuePaused)
+        {
+            Debug.WriteLine("Queue is already paused");
+            return;
+        }
+
+        Debug.WriteLine("Pausing render queue...");
+        _queuePaused = true;
+        QueueStatusChanged?.Invoke(this, true); // true = paused
+        Debug.WriteLine("Render queue paused");
+    }
+
+    /// <summary>
+    /// Get current queue statistics
+    /// </summary>
+    public async Task<QueueStatistics> GetQueueStatisticsAsync()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<IRenderJobRepository>();
+
+        var allJobs = await repository.GetAllAsync();
+
+        int runningCount;
+        lock (_runningJobsLock)
+        {
+            runningCount = _runningJobs.Count;
+        }
+
+        return new QueueStatistics
+        {
+            IsQueuePaused = _queuePaused,
+            PendingCount = allJobs.Count(j => j.Status == RenderJobStatus.Pending),
+            RunningCount = runningCount,
+            CompletedCount = allJobs.Count(j => j.Status == RenderJobStatus.Completed),
+            FailedCount = allJobs.Count(j => j.Status == RenderJobStatus.Failed || j.Status == RenderJobStatus.DeadLetter),
+            TotalCount = allJobs.Count
+        };
+    }
+
     private async Task ProcessJobAsync(Guid jobId, CancellationToken stoppingToken)
     {
         using var scope = _serviceProvider.CreateScope();
@@ -311,6 +393,13 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
             renderJob.StartedAt = DateTime.UtcNow;
             renderJob.ProcessId = Environment.ProcessId;
             renderJob.MachineName = Environment.MachineName;
+
+            // Set initial stage for two-stage renders
+            if (renderJob.IsTwoStageRender)
+            {
+                renderJob.CurrentStage = "Stage 1: MLT Render";
+            }
+
             await repository.UpdateAsync(renderJob);
 
             FireStatusChanged(jobId, RenderJobStatus.Running, 0, 0);
@@ -482,6 +571,28 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
             throw new InvalidOperationException("Failed to deserialize FFmpeg render settings");
         }
 
+        // Ensure FFmpeg path is set
+        if (string.IsNullOrEmpty(ffmpegSettings.FFmpegPath))
+        {
+            // Try to get FFmpeg path from settings or auto-detect
+            var settingsService = scope.ServiceProvider.GetService<SettingsService>();
+            if (settingsService != null)
+            {
+                var settings = await settingsService.LoadSettingsAsync();
+                ffmpegSettings.FFmpegPath = settings.FFmpegPath;
+            }
+
+            // Fallback to SVP's FFmpeg if available
+            if (string.IsNullOrEmpty(ffmpegSettings.FFmpegPath))
+            {
+                ffmpegSettings.FFmpegPath = @"C:\Program Files (x86)\SVP 4\utils\ffmpeg.exe";
+                if (!File.Exists(ffmpegSettings.FFmpegPath))
+                {
+                    ffmpegSettings.FFmpegPath = "ffmpeg"; // Hope it's in PATH
+                }
+            }
+        }
+
         // Get RIFE services
         var rifePipeline = scope.ServiceProvider.GetRequiredService<RifeVideoProcessingPipeline>();
 
@@ -539,46 +650,141 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
             // STAGE 1: Render MLT to temporary file
             Debug.WriteLine($"Stage 1/2: Rendering MLT to temp file: {renderJob.IntermediatePath}");
 
-            // Deserialize MLT settings from JSON
-            renderJob.MeltSettings = JsonSerializer.Deserialize<MeltRenderSettings>(renderJob.RenderSettings);
-            if (renderJob.MeltSettings == null)
+            // Deserialize combined settings (MeltSettings, FFmpegSettings, RifeSettings)
+            // For two-stage renders, all settings are stored together in RenderSettings JSON
+            var settingsDoc = JsonSerializer.Deserialize<JsonDocument>(renderJob.RenderSettings);
+            if (settingsDoc == null)
             {
-                throw new InvalidOperationException("Failed to deserialize MLT render settings for two-stage render");
+                throw new InvalidOperationException("Failed to deserialize render settings for two-stage render");
             }
 
-            var xmlService = scope.ServiceProvider.GetRequiredService<CheapHelpers.Services.DataExchange.Xml.IXmlService>();
-            var shotcutService = scope.ServiceProvider.GetRequiredService<ShotcutService>();
-            var settingsService = scope.ServiceProvider.GetRequiredService<SettingsService>();
-            var appSettings = await settingsService.LoadSettingsAsync();
-
-            var meltService = new MeltRenderService(
-                meltExecutable: appSettings.MeltPath,
-                xmlService: xmlService,
-                shotcutService: shotcutService);
-
-            // Stage 1 progress: 0-50%
-            var stage1Progress = new Progress<RenderProgress>(rProgress =>
+            // Extract FFmpegSettings from combined JSON
+            if (settingsDoc.RootElement.TryGetProperty("FFmpegSettings", out var ffmpegElement))
             {
-                var adjustedPercentage = rProgress.Percentage * 0.5; // Scale to 0-50%
-                FireProgressChanged(jobId, RenderJobStatus.Running, adjustedPercentage, rProgress.CurrentFrame,
-                    null, TimeSpan.Zero, null);
-            });
+                renderJob.FFmpegSettings = JsonSerializer.Deserialize<FFmpegRenderSettings>(ffmpegElement.GetRawText());
+            }
 
-            var stage1Success = await meltService.RenderAsync(
-                renderJob.SourceVideoPath,
-                renderJob.IntermediatePath,
-                renderJob.MeltSettings!,
-                stage1Progress,
-                cancellationToken,
-                renderJob.InPoint,
-                renderJob.OutPoint,
-                renderJob.SelectedVideoTracks,
-                renderJob.SelectedAudioTracks);
-
-            if (!stage1Success)
+            // Extract MeltSettings from combined JSON
+            if (settingsDoc.RootElement.TryGetProperty("MeltSettings", out var meltElement))
             {
-                Debug.WriteLine("Stage 1 (MLT render) failed");
-                return false;
+                renderJob.MeltSettings = JsonSerializer.Deserialize<MeltRenderSettings>(meltElement.GetRawText());
+            }
+
+            // Extract RifeSettings from combined JSON
+            if (settingsDoc.RootElement.TryGetProperty("RifeSettings", out var rifeElement))
+            {
+                renderJob.RifeSettings = JsonSerializer.Deserialize<RifeSettings>(rifeElement.GetRawText());
+            }
+
+            // Check if we should use hardware acceleration for Stage 1
+            // If FFmpegSettings exists and has hardware acceleration enabled, use NVENC
+            bool useHardwareAcceleration = renderJob.FFmpegSettings?.UseHardwareAcceleration ?? false;
+
+            if (useHardwareAcceleration && renderJob.FFmpegSettings != null)
+            {
+                Debug.WriteLine("Stage 1: Using FFmpeg with NVENC hardware acceleration for MLT render");
+
+                // Use FFmpeg to render the MLT file with hardware acceleration
+                var xmlService = scope.ServiceProvider.GetRequiredService<CheapHelpers.Services.DataExchange.Xml.IXmlService>();
+                var shotcutService = scope.ServiceProvider.GetRequiredService<ShotcutService>();
+                var settingsService = scope.ServiceProvider.GetRequiredService<SettingsService>();
+                var appSettings = await settingsService.LoadSettingsAsync();
+
+                var meltService = new MeltRenderService(
+                    meltExecutable: appSettings.MeltPath,
+                    xmlService: xmlService,
+                    shotcutService: shotcutService);
+
+                // Create hardware-accelerated settings for Stage 1 using FFmpegSettings
+                var stage1Settings = new MeltRenderSettings
+                {
+                    ThreadCount = Environment.ProcessorCount,
+                    // Use NVENC preset (p-series) from FFmpegSettings, fallback to medium
+                    Preset = renderJob.FFmpegSettings.NvencPreset ?? "medium",
+                    Crf = renderJob.FFmpegSettings.Quality,
+                    // Use NVENC codec from FFmpegSettings
+                    VideoCodec = renderJob.FFmpegSettings.VideoCodec switch
+                    {
+                        "h264_nvenc" => "h264_nvenc",
+                        "hevc_nvenc" => "hevc_nvenc",
+                        _ => "hevc_nvenc" // Default to HEVC NVENC
+                    },
+                    AudioCodec = "aac",
+                    AudioBitrate = "128k",
+                    UseHardwareAcceleration = true // Enable hardware acceleration
+                };
+
+                Debug.WriteLine($"Stage 1 using NVENC: codec={stage1Settings.VideoCodec}, preset={stage1Settings.Preset}, quality={stage1Settings.Crf}");
+
+                // Stage 1 progress: 0-50%
+                var stage1Progress = new Progress<RenderProgress>(rProgress =>
+                {
+                    var adjustedPercentage = rProgress.Percentage * 0.5; // Scale to 0-50%
+                    FireProgressChanged(jobId, RenderJobStatus.Running, adjustedPercentage, rProgress.CurrentFrame,
+                        null, TimeSpan.Zero, null);
+                });
+
+                var stage1Success = await meltService.RenderAsync(
+                    renderJob.SourceVideoPath,
+                    renderJob.IntermediatePath,
+                    stage1Settings,
+                    stage1Progress,
+                    cancellationToken,
+                    renderJob.InPoint,
+                    renderJob.OutPoint,
+                    renderJob.SelectedVideoTracks,
+                    renderJob.SelectedAudioTracks);
+
+                if (!stage1Success)
+                {
+                    Debug.WriteLine("Stage 1 (MLT render with NVENC) failed");
+                    return false;
+                }
+            }
+            else
+            {
+                Debug.WriteLine("Stage 1: Using Melt with CPU encoding for MLT render");
+
+                // MeltSettings already deserialized from combined JSON above
+                if (renderJob.MeltSettings == null)
+                {
+                    throw new InvalidOperationException("MeltSettings not found in two-stage render settings");
+                }
+
+                var xmlService = scope.ServiceProvider.GetRequiredService<CheapHelpers.Services.DataExchange.Xml.IXmlService>();
+                var shotcutService = scope.ServiceProvider.GetRequiredService<ShotcutService>();
+                var settingsService = scope.ServiceProvider.GetRequiredService<SettingsService>();
+                var appSettings = await settingsService.LoadSettingsAsync();
+
+                var meltService = new MeltRenderService(
+                    meltExecutable: appSettings.MeltPath,
+                    xmlService: xmlService,
+                    shotcutService: shotcutService);
+
+                // Stage 1 progress: 0-50%
+                var stage1Progress = new Progress<RenderProgress>(rProgress =>
+                {
+                    var adjustedPercentage = rProgress.Percentage * 0.5; // Scale to 0-50%
+                    FireProgressChanged(jobId, RenderJobStatus.Running, adjustedPercentage, rProgress.CurrentFrame,
+                        null, TimeSpan.Zero, null);
+                });
+
+                var stage1Success = await meltService.RenderAsync(
+                    renderJob.SourceVideoPath,
+                    renderJob.IntermediatePath,
+                    renderJob.MeltSettings!,
+                    stage1Progress,
+                    cancellationToken,
+                    renderJob.InPoint,
+                    renderJob.OutPoint,
+                    renderJob.SelectedVideoTracks,
+                    renderJob.SelectedAudioTracks);
+
+                if (!stage1Success)
+                {
+                    Debug.WriteLine("Stage 1 (MLT render) failed");
+                    return false;
+                }
             }
 
             Debug.WriteLine($"Stage 1 complete. Temp file: {renderJob.IntermediatePath}");
@@ -594,7 +800,35 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
             // STAGE 2: RIFE interpolation on temp file
             Debug.WriteLine($"Stage 2/2: RIFE interpolation");
 
+            // Update stage information
+            renderJob.CurrentStage = "Stage 2: RIFE Interpolation";
+            var repository = scope.ServiceProvider.GetRequiredService<IRenderJobRepository>();
+            await repository.UpdateAsync(renderJob);
+
             var rifePipeline = scope.ServiceProvider.GetRequiredService<RifeVideoProcessingPipeline>();
+
+            // Ensure FFmpeg path is set for RIFE processing
+            var ffmpegSettingsForRife = renderJob.FFmpegSettings ?? new FFmpegRenderSettings();
+            if (string.IsNullOrEmpty(ffmpegSettingsForRife.FFmpegPath))
+            {
+                // Try to get FFmpeg path from settings
+                var settingsService = scope.ServiceProvider.GetService<SettingsService>();
+                if (settingsService != null)
+                {
+                    var settings = await settingsService.LoadSettingsAsync();
+                    ffmpegSettingsForRife.FFmpegPath = settings.FFmpegPath;
+                }
+
+                // Fallback to SVP's FFmpeg if available
+                if (string.IsNullOrEmpty(ffmpegSettingsForRife.FFmpegPath))
+                {
+                    ffmpegSettingsForRife.FFmpegPath = @"C:\Program Files (x86)\SVP 4\utils\ffmpeg.exe";
+                    if (!File.Exists(ffmpegSettingsForRife.FFmpegPath))
+                    {
+                        ffmpegSettingsForRife.FFmpegPath = "ffmpeg"; // Hope it's in PATH
+                    }
+                }
+            }
 
             var pipelineOptions = new RifePipelineOptions
             {
@@ -608,7 +842,7 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
                         _ => 1
                     }
                 },
-                FFmpegSettings = renderJob.FFmpegSettings!,
+                FFmpegSettings = ffmpegSettingsForRife,
                 InputFps = (int)renderJob.FrameRate,
                 ValidateFrameCounts = true,
                 KeepTemporaryFiles = false,

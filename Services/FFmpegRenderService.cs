@@ -9,11 +9,21 @@ namespace CheapShotcutRandomizer.Services;
 /// IMPORTANT: ABSOLUTELY USE NVENC - it's 8-10x FASTER than CPU encoding
 /// Perfect for RIFE frame reassembly workflow
 /// </summary>
-public class FFmpegRenderService(SvpDetectionService svpDetection)
+public class FFmpegRenderService
 {
+    private readonly SvpDetectionService _svpDetection;
+    private readonly SettingsService? _settingsService;
     private bool _useSvpEncoders = true; // Default to true - SVP has better FFmpeg builds
 
-    public FFmpegRenderService() : this(new SvpDetectionService())
+    public FFmpegRenderService(SvpDetectionService svpDetection, SettingsService? settingsService = null)
+    {
+        _svpDetection = svpDetection;
+        _settingsService = settingsService;
+        // Configure FFMpegCore on construction to ensure it's ready for use
+        ConfigureFFmpegPath();
+    }
+
+    public FFmpegRenderService() : this(new SvpDetectionService(), null)
     {
         // Parameterless constructor for backward compatibility
     }
@@ -29,11 +39,49 @@ public class FFmpegRenderService(SvpDetectionService svpDetection)
 
     /// <summary>
     /// Configure FFMpegCore to use best available FFmpeg
-    /// Priority: SVP > PATH > Shotcut
+    /// Priority: Settings (FFprobePath) > SVP > PATH > Shotcut
+    /// IMPORTANT: FFMpegCore requires BOTH ffmpeg.exe AND ffprobe.exe in the same directory
+    /// SVP only ships with ffmpeg.exe, so we fall back to Shotcut when ffprobe is missing
     /// </summary>
     public void ConfigureFFmpegPath()
     {
-        var ffmpegPath = svpDetection.GetPreferredFFmpegPath(_useSvpEncoders);
+        // Check if user has configured a specific FFprobe path in settings
+        if (_settingsService != null)
+        {
+            try
+            {
+                var settings = _settingsService.LoadSettingsAsync().GetAwaiter().GetResult();
+                if (!string.IsNullOrWhiteSpace(settings.FFprobePath) && Path.IsPathRooted(settings.FFprobePath))
+                {
+                    var ffprobeDir = Path.GetDirectoryName(settings.FFprobePath);
+                    if (ffprobeDir != null && File.Exists(settings.FFprobePath))
+                    {
+                        // User has configured a specific FFprobe path - check if ffmpeg.exe is in the same directory
+                        var ffmpegInSameDir = Path.Combine(ffprobeDir, "ffmpeg.exe");
+                        if (File.Exists(ffmpegInSameDir))
+                        {
+                            Debug.WriteLine($"[FFmpegRenderService] Using user-configured FFprobe directory: {ffprobeDir}");
+                            Debug.WriteLine($"[FFmpegRenderService] ffmpeg.exe: {ffmpegInSameDir}");
+                            Debug.WriteLine($"[FFmpegRenderService] ffprobe.exe: {settings.FFprobePath}");
+                            GlobalFFOptions.Configure(new FFOptions { BinaryFolder = ffprobeDir });
+                            return;
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"[FFmpegRenderService] WARNING: ffmpeg.exe not found in configured FFprobe directory: {ffprobeDir}");
+                            Debug.WriteLine("[FFmpegRenderService] Falling back to auto-detection");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[FFmpegRenderService] Error loading settings for FFprobe path: {ex.Message}");
+                Debug.WriteLine("[FFmpegRenderService] Falling back to auto-detection");
+            }
+        }
+
+        var ffmpegPath = _svpDetection.GetPreferredFFmpegPath(_useSvpEncoders);
 
         if (ffmpegPath == null)
         {
@@ -48,7 +96,34 @@ public class FFmpegRenderService(SvpDetectionService svpDetection)
             var directory = Path.GetDirectoryName(ffmpegPath);
             if (directory != null)
             {
+                // CRITICAL: FFMpegCore needs BOTH ffmpeg.exe AND ffprobe.exe
+                // SVP only ships with ffmpeg.exe, so check for ffprobe.exe
+                var ffprobeInSameDir = Path.Combine(directory, "ffprobe.exe");
+
+                if (!File.Exists(ffprobeInSameDir))
+                {
+                    Debug.WriteLine($"[FFmpegRenderService] WARNING: ffprobe.exe not found in {directory}");
+                    Debug.WriteLine("[FFmpegRenderService] SVP installation lacks ffprobe.exe - falling back to Shotcut");
+
+                    // Fall back to Shotcut which includes both ffmpeg.exe and ffprobe.exe
+                    var shotcutDirectory = FindShotcutFFmpegDirectory();
+                    if (shotcutDirectory != null)
+                    {
+                        Debug.WriteLine($"[FFmpegRenderService] Using Shotcut FFmpeg directory: {shotcutDirectory}");
+                        GlobalFFOptions.Configure(new FFOptions { BinaryFolder = shotcutDirectory });
+                        return;
+                    }
+                    else
+                    {
+                        Debug.WriteLine("[FFmpegRenderService] ERROR: Shotcut FFmpeg not found - FFMpegCore will likely fail");
+                        Debug.WriteLine("[FFmpegRenderService] Install Shotcut or add ffprobe.exe to SVP's utils folder");
+                        Debug.WriteLine("[FFmpegRenderService] Or configure FFprobePath in settings to point to a directory with both ffmpeg.exe and ffprobe.exe");
+                        return;
+                    }
+                }
+
                 Debug.WriteLine($"[FFmpegRenderService] Configuring FFMpegCore to use: {directory}");
+                Debug.WriteLine($"[FFmpegRenderService] Verified ffprobe.exe exists: {ffprobeInSameDir}");
                 GlobalFFOptions.Configure(new FFOptions { BinaryFolder = directory });
             }
         }
@@ -56,6 +131,36 @@ public class FFmpegRenderService(SvpDetectionService svpDetection)
         {
             Debug.WriteLine($"[FFmpegRenderService] Using FFmpeg from system PATH: {ffmpegPath}");
         }
+    }
+
+    /// <summary>
+    /// Find Shotcut's FFmpeg directory (contains both ffmpeg.exe and ffprobe.exe)
+    /// </summary>
+    private string? FindShotcutFFmpegDirectory()
+    {
+        var shotcutPaths = new[]
+        {
+            @"C:\Program Files\Shotcut",
+            @"C:\Program Files (x86)\Shotcut",
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Shotcut"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Shotcut")
+        };
+
+        foreach (var shotcutPath in shotcutPaths)
+        {
+            if (Directory.Exists(shotcutPath))
+            {
+                var ffmpegExe = Path.Combine(shotcutPath, "ffmpeg.exe");
+                var ffprobeExe = Path.Combine(shotcutPath, "ffprobe.exe");
+
+                if (File.Exists(ffmpegExe) && File.Exists(ffprobeExe))
+                {
+                    return shotcutPath;
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -78,7 +183,7 @@ public class FFmpegRenderService(SvpDetectionService svpDetection)
             Debug.WriteLine("4-hour job will take 4 hours instead of 24-30 minutes");
         }
 
-        var framePattern = Path.Combine(framesFolder, "%06d.png");
+        var framePattern = Path.Combine(framesFolder, "frame_%06d.png");
 
         try
         {
@@ -140,9 +245,7 @@ public class FFmpegRenderService(SvpDetectionService svpDetection)
             .WithCustomArgument($"-cq {settings.Quality}") // Quality level (18-23)
             .WithCustomArgument("-pix_fmt yuv420p") // Compatibility
             .WithCustomArgument("-c:a copy") // Copy audio without re-encoding
-            .WithCustomArgument("-shortest") // Match shortest stream
-            .WithCustomArgument("-hwaccel cuda") // Enable CUDA decoding
-            .WithCustomArgument("-hwaccel_output_format cuda")); // Keep frames in GPU memory
+            .WithCustomArgument("-shortest")); // Match shortest stream
     }
 
     /// <summary>
@@ -263,7 +366,7 @@ public class FFmpegRenderService(SvpDetectionService svpDetection)
         var ffmpegPaths = new List<string>();
 
         // 1. Try SVP installation first (best FFmpeg build)
-        var svp = svpDetection.DetectSvpInstallation();
+        var svp = _svpDetection.DetectSvpInstallation();
         if (svp.IsInstalled && File.Exists(svp.FFmpegPath))
         {
             ffmpegPaths.Add(svp.FFmpegPath);
@@ -354,6 +457,11 @@ public class FFmpegRenderService(SvpDetectionService svpDetection)
 /// </summary>
 public class FFmpegRenderSettings
 {
+    /// <summary>
+    /// Path to FFmpeg executable (optional - will auto-detect if not set)
+    /// </summary>
+    public string? FFmpegPath { get; set; }
+
     /// <summary>
     /// ABSOLUTELY SET TO TRUE if you have RTX 3080
     /// Speed improvement: 8-10x faster than CPU

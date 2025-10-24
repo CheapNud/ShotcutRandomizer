@@ -18,6 +18,17 @@ public interface IRenderQueueService
     /// </summary>
     event EventHandler<RenderProgressEventArgs>? StatusChanged;
 
+    /// <summary>
+    /// Event fired when queue is started or stopped
+    /// </summary>
+    event EventHandler<bool>? QueueStatusChanged;
+
+    // Queue control properties
+    /// <summary>
+    /// Gets whether the queue is currently paused
+    /// </summary>
+    bool IsQueuePaused { get; }
+
     // Queue management
     /// <summary>
     /// Add a new render job to the queue (alias: EnqueueJobAsync)
@@ -48,6 +59,23 @@ public interface IRenderQueueService
     /// Retry a failed or dead letter job
     /// </summary>
     Task<bool> RetryJobAsync(Guid jobId);
+
+    // Queue control methods
+    /// <summary>
+    /// Start the render queue to begin processing jobs
+    /// </summary>
+    void StartQueue();
+
+    /// <summary>
+    /// Stop/pause the render queue to prevent processing new jobs
+    /// NOTE: Currently running jobs will continue to completion
+    /// </summary>
+    void StopQueue();
+
+    /// <summary>
+    /// Get current queue statistics
+    /// </summary>
+    Task<QueueStatistics> GetQueueStatisticsAsync();
 
     // Queue queries
     /// <summary>

@@ -18,7 +18,7 @@
 
         @if (Hardware.NvencAvailable)
         {
-            <MudAlert Severity="Severity.Success" Dense="true">
+            <MudAlert Severity="Severity.Info" Dense="true">
                 NVENC available - Hardware acceleration enabled!
                 <br />
                 Speedup: ~@Hardware.NvencSpeedupFactor.ToString("F1")x faster than CPU
@@ -56,19 +56,17 @@
                     @foreach (var encoder in encoderGroup.Value.OrderBy(e => e.DisplayName))
                     {
                         <MudItem xs="12" sm="6" md="4">
-                            <MudPaper Class="pa-2" Elevation="0" Style="@(encoder.IsAvailable ? "background-color: var(--mud-palette-success-lighten);" : "background-color: var(--mud-palette-background-grey); opacity: 0.6;")">
+                            <MudPaper Class="pa-1" Elevation="0" Outlined="true" Style="@(encoder.IsAvailable ? "" : "opacity: 0.5;")">
                                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                                    <MudCheckBox T="bool"
-                                                 Value="@encoder.IsAvailable"
-                                                 ReadOnly="true"
-                                                 Color="@(encoder.IsAvailable ? Color.Success : Color.Default)"
-                                                 Dense="true" />
+                                    <MudIcon Icon="@(encoder.IsAvailable ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                                             Color="@(encoder.IsAvailable ? Color.Primary : Color.Default)"
+                                             Size="Size.Small" />
                                     <MudStack Spacing="0">
-                                        <MudText Typo="Typo.body2" Style="font-weight: 500;">@encoder.DisplayName</MudText>
-                                        <MudText Typo="Typo.caption">
+                                        <MudText Typo="Typo.body2">@encoder.DisplayName</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
                                             @if (encoder.IsAvailable)
                                             {
-                                                <text>~@encoder.EstimatedSpeedupFactor.ToString("F1")x speedup</text>
+                                                <text>@encoder.EstimatedSpeedupFactor.ToString("F1")x speedup</text>
                                             }
                                             else
                                             {
@@ -92,12 +90,12 @@
                                 <MudStack Spacing="1">
                                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                                         <MudIcon Icon="@(encoder.IsAvailable ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
-                                                 Color="@(encoder.IsAvailable ? Color.Success : Color.Default)"
+                                                 Color="@(encoder.IsAvailable ? Color.Primary : Color.Default)"
                                                  Size="Size.Small" />
                                         <MudText Typo="Typo.body2" Style="font-weight: 500;">@encoder.DisplayName</MudText>
                                         @if (encoder.IsAvailable)
                                         {
-                                            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
                                                 @encoder.EstimatedSpeedupFactor.ToString("F1")x
                                             </MudChip>
                                         }

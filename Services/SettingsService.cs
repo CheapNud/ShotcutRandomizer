@@ -80,6 +80,15 @@ public class SettingsService(SvpDetectionService svpDetection)
             defaultSettings.FFmpegPath = detected.FFmpegPath;
         }
 
+        if (detected.FFprobePath != null)
+        {
+            defaultSettings.FFprobePath = detected.FFprobePath;
+        }
+        else
+        {
+            Debug.WriteLine("WARNING: FFprobe not found! RIFE video validation will be unavailable.");
+        }
+
         if (detected.MeltPath != null)
         {
             defaultSettings.MeltPath = detected.MeltPath;
