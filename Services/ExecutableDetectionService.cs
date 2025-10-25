@@ -25,7 +25,8 @@ public class ExecutableDetectionService(SvpDetectionService svpDetection)
             FFmpegPath = DetectFFmpeg(useSvpEncoders: true, customPath: null),
             FFprobePath = DetectFFprobe(useSvpEncoders: true, customPath: null),
             MeltPath = DetectMelt(customPath: null),
-            RifePath = DetectRife(customPath: null)
+            RifePath = DetectRife(customPath: null),
+            RealEsrganAvailable = DetectRealEsrgan()
         };
 
         Debug.WriteLine("=== Executable Detection ===");
@@ -33,6 +34,7 @@ public class ExecutableDetectionService(SvpDetectionService svpDetection)
         Debug.WriteLine($"FFprobe: {detected.FFprobePath ?? "NOT FOUND"}");
         Debug.WriteLine($"Melt: {detected.MeltPath ?? "NOT FOUND"}");
         Debug.WriteLine($"RIFE: {detected.RifePath ?? "NOT FOUND"}");
+        Debug.WriteLine($"Real-ESRGAN: {(detected.RealEsrganAvailable ? "AVAILABLE" : "NOT FOUND")}");
         Debug.WriteLine("============================");
 
         return detected;
@@ -310,6 +312,63 @@ public class ExecutableDetectionService(SvpDetectionService svpDetection)
     }
 
     /// <summary>
+    /// Detect Real-ESRGAN (vsrealesrgan Python package)
+    /// Real-ESRGAN is a Python package integrated via VapourSynth
+    /// </summary>
+    public bool DetectRealEsrgan()
+    {
+        try
+        {
+            // Check if Python can import vsrealesrgan
+            var pythonCommands = new[] { "python", "python3" };
+
+            foreach (var pythonCmd in pythonCommands)
+            {
+                try
+                {
+                    var process = new Process
+                    {
+                        StartInfo = new ProcessStartInfo
+                        {
+                            FileName = pythonCmd,
+                            Arguments = "-c \"import vsrealesrgan; print('OK')\"",
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        }
+                    };
+
+                    process.Start();
+                    var output = process.StandardOutput.ReadToEnd();
+                    process.WaitForExit(5000);
+
+                    if (process.ExitCode == 0 && output.Contains("OK"))
+                    {
+                        Debug.WriteLine($"[Real-ESRGAN] Found via {pythonCmd}");
+                        return true;
+                    }
+                }
+                catch
+                {
+                    // Try next Python command
+                    continue;
+                }
+            }
+
+            Debug.WriteLine("[Real-ESRGAN] NOT FOUND - vsrealesrgan not installed");
+            Debug.WriteLine("[Real-ESRGAN] Install with: pip install vsrealesrgan");
+            Debug.WriteLine("[Real-ESRGAN] See REAL_ESRGAN_INSTALLATION.md for details");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Real-ESRGAN] Detection failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Check if executable exists in system PATH
     /// </summary>
     private bool IsExecutableInPath(string executableName)
@@ -390,8 +449,10 @@ public class DetectedExecutables
     public string? FFprobePath { get; set; }
     public string? MeltPath { get; set; }
     public string? RifePath { get; set; }
+    public bool RealEsrganAvailable { get; set; }
 
-    public bool AllFound => FFmpegPath != null && FFprobePath != null && MeltPath != null && RifePath != null;
+    public bool AllFound => FFmpegPath != null && FFprobePath != null && MeltPath != null && RifePath != null && RealEsrganAvailable;
     public bool FFmpegAndMeltFound => FFmpegPath != null && MeltPath != null;
     public bool EssentialsFound => FFmpegPath != null && FFprobePath != null && MeltPath != null;
+    public bool AiFeaturesFound => RifePath != null && RealEsrganAvailable;
 }

@@ -57,7 +57,7 @@ public class RifePipelineOptions
         {
             RifeOptions = new RifeOptions
             {
-                ModelName = "rife-v4.6",
+                ModelName = "4.6",
                 GpuId = 0,
                 InterpolationPasses = 1 // 2x interpolation (30fps → 60fps)
             },
@@ -76,7 +76,7 @@ public class RifePipelineOptions
         {
             RifeOptions = new RifeOptions
             {
-                ModelName = "rife-v4.22", // Latest model
+                ModelName = "4.25", // Latest stable model
                 GpuId = 0,
                 InterpolationPasses = 1,
                 TtaMode = true // Better quality but slower
@@ -103,7 +103,7 @@ public class RifePipelineOptions
         {
             RifeOptions = new RifeOptions
             {
-                ModelName = "rife-v4.15-lite", // Lighter model
+                ModelName = "4.16-lite", // Fastest lite model
                 GpuId = 0,
                 InterpolationPasses = 1
             },

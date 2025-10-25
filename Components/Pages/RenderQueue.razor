@@ -323,6 +323,7 @@
     private QueueStatistics? _queueStats;
     private bool _isLoadingJobs = true;
     private System.Threading.Timer? _refreshTimer;
+    private DateTime _lastProgressUIUpdate = DateTime.MinValue;
 
     protected override async Task OnInitializedAsync()
     {
@@ -352,12 +353,12 @@
 
         await Task.WhenAll(hardwareTask, jobsTask);
 
-        // Start polling timer as fallback (every 2 seconds)
+        // Start polling timer as fallback (every 5 seconds - reduced from 2 to avoid UI thrashing)
         _refreshTimer = new System.Threading.Timer(
             async _ => await RefreshJobsInternal(),
             null,
             TimeSpan.Zero,
-            TimeSpan.FromSeconds(2));
+            TimeSpan.FromSeconds(5));
     }
 
     private async Task LoadJobs()
@@ -403,6 +404,13 @@
 
     private async void OnProgressChanged(object? sender, RenderProgressEventArgs e)
     {
+        // Throttle UI updates to 100ms (10 fps max) to prevent progress bar glitching
+        var now = DateTime.UtcNow;
+        if ((now - _lastProgressUIUpdate).TotalMilliseconds < 100)
+            return;
+
+        _lastProgressUIUpdate = now;
+
         await InvokeAsync(() =>
         {
             // Find job in active jobs list

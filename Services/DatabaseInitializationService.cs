@@ -33,7 +33,7 @@ public class DatabaseInitializationService : IHostedService
             {
                 // Try to query with new columns - will fail if schema is old
                 await db.Database.ExecuteSqlRawAsync(
-                    "SELECT InPoint, OutPoint, SelectedVideoTracks, SelectedAudioTracks, FrameRate, IsTwoStageRender, IntermediatePath, OutputFileSizeBytes, IntermediateFileSizeBytes, CurrentStage FROM RenderJobs LIMIT 1",
+                    "SELECT InPoint, OutPoint, SelectedVideoTracks, SelectedAudioTracks, FrameRate, IsTwoStageRender, IntermediatePath, OutputFileSizeBytes, IntermediateFileSizeBytes, CurrentStage, IsThreeStageRender, IntermediatePath2, IntermediateFileSizeBytes2, UseRifeInterpolation, UseRealCugan, RealCuganOptionsJson, UseRealEsrgan, RealEsrganOptionsJson, TargetUpscaleResolution, UseNonAiUpscaling, NonAiUpscalingAlgorithm, NonAiUpscalingScaleFactor FROM RenderJobs LIMIT 1",
                     cancellationToken);
 
                 Debug.WriteLine("Database schema is up to date");

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using CheapShotcutRandomizer.Models;
+using CheapShotcutRandomizer.Services.Utilities;
 using CheapHelpers.Services.DataExchange.Xml;
 
 namespace CheapShotcutRandomizer.Services;
@@ -115,20 +116,16 @@ public class MeltRenderService
             tcs.SetResult(process.ExitCode == 0);
         };
 
-        // Register cancellation
-        cancellationToken.Register(() =>
+        // Register cancellation with graceful shutdown
+        cancellationToken.Register(async () =>
         {
-            if (!process.HasExited)
-            {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"Error killing melt process: {ex.Message}");
-                }
-            }
+            Debug.WriteLine("Melt render cancelled - initiating graceful shutdown...");
+
+            // Use ProcessManager for graceful shutdown with process tree cleanup
+            await ProcessManager.GracefulShutdownAsync(
+                process,
+                gracefulTimeoutMs: 3000,
+                processName: "melt");
         });
 
         try

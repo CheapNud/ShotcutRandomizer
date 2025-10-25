@@ -53,11 +53,14 @@
             }
 
             <MudItem xs="12">
-                <MudProgressLinear Value="@GetSmoothedProgressPercentage()"
+                @{
+                    var currentProgress = GetSmoothedProgressPercentage();
+                }
+                <MudProgressLinear Value="@currentProgress"
                                    Color="Color.Primary"
                                    Size="Size.Large">
                     <MudText Typo="Typo.body2">
-                        @GetSmoothedProgressPercentage().ToString("F1")%
+                        @currentProgress.ToString("F1")%
                         (@GetProgressTimecode())
                     </MudText>
                 </MudProgressLinear>

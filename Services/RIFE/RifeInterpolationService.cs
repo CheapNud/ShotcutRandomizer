@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using CheapShotcutRandomizer.Services.Utilities;
 
 namespace CheapShotcutRandomizer.Services.RIFE;
 
@@ -279,52 +280,85 @@ public class RifeInterpolationService
                     throw new InvalidOperationException("Failed to start vspipe or ffmpeg process");
                 }
 
-                // Pipe vspipe stdout to ffmpeg stdin
-                var pipeTask = Task.Run(async () =>
+                // Register cancellation handlers for graceful shutdown
+                var vspipeCancellation = cancellationToken.Register(async () =>
                 {
-                    await vspipe.StandardOutput.BaseStream.CopyToAsync(ffmpeg.StandardInput.BaseStream, cancellationToken);
-                    ffmpeg.StandardInput.Close();
+                    Debug.WriteLine("RIFE (SVP) cancelled - shutting down vspipe...");
+                    await ProcessManager.GracefulShutdownAsync(vspipe, gracefulTimeoutMs: 3000, processName: "vspipe (RIFE)");
                 });
 
-                // Monitor progress from vspipe stderr
-                var progressTask = Task.Run(async () =>
+                var ffmpegCancellation = cancellationToken.Register(async () =>
                 {
-                    string? line;
-                    var framePattern = new Regex(@"Frame:\s*(\d+)/(\d+)");
+                    Debug.WriteLine("RIFE (SVP) cancelled - shutting down ffmpeg...");
+                    await ProcessManager.GracefulShutdownAsync(ffmpeg, gracefulTimeoutMs: 2000, processName: "ffmpeg (RIFE)");
+                });
 
-                    while ((line = await vspipe.StandardError.ReadLineAsync()) != null)
+                try
+                {
+                    // Pipe vspipe stdout to ffmpeg stdin
+                    var pipeTask = Task.Run(async () =>
                     {
-                        Debug.WriteLine($"[vspipe] {line}");
-
-                        var match = framePattern.Match(line);
-                        if (match.Success &&
-                            int.TryParse(match.Groups[1].Value, out var current) &&
-                            int.TryParse(match.Groups[2].Value, out var total) &&
-                            total > 0)
+                        try
                         {
-                            progress?.Report((double)current / total * 100);
+                            await vspipe.StandardOutput.BaseStream.CopyToAsync(ffmpeg.StandardInput.BaseStream, cancellationToken);
+                            ffmpeg.StandardInput.Close();
                         }
-                    }
-                });
+                        catch (OperationCanceledException)
+                        {
+                            Debug.WriteLine("[RIFE] Pipe operation cancelled");
+                        }
+                    }, cancellationToken);
 
-                // Monitor FFmpeg output
-                var ffmpegMonitorTask = Task.Run(async () =>
-                {
-                    string? line;
-                    while ((line = await ffmpeg.StandardError.ReadLineAsync()) != null)
+                    // Monitor progress from vspipe stderr
+                    var progressTask = Task.Run(async () =>
                     {
-                        Debug.WriteLine($"[ffmpeg] {line}");
-                    }
-                });
+                        string? line;
+                        var framePattern = new Regex(@"Frame:\s*(\d+)/(\d+)");
 
-                // Wait for both processes
-                await Task.WhenAll(
-                    vspipe.WaitForExitAsync(cancellationToken),
-                    ffmpeg.WaitForExitAsync(cancellationToken),
-                    pipeTask,
-                    progressTask,
-                    ffmpegMonitorTask
-                );
+                        while ((line = await vspipe.StandardError.ReadLineAsync()) != null)
+                        {
+                            Debug.WriteLine($"[vspipe] {line}");
+
+                            var match = framePattern.Match(line);
+                            if (match.Success &&
+                                int.TryParse(match.Groups[1].Value, out var current) &&
+                                int.TryParse(match.Groups[2].Value, out var total) &&
+                                total > 0)
+                            {
+                                progress?.Report((double)current / total * 100);
+                            }
+                        }
+                    }, cancellationToken);
+
+                    // Monitor FFmpeg output
+                    var ffmpegMonitorTask = Task.Run(async () =>
+                    {
+                        string? line;
+                        while ((line = await ffmpeg.StandardError.ReadLineAsync()) != null)
+                        {
+                            Debug.WriteLine($"[ffmpeg] {line}");
+                        }
+                    }, cancellationToken);
+
+                    // Wait for both processes
+                    await Task.WhenAll(
+                        vspipe.WaitForExitAsync(cancellationToken),
+                        ffmpeg.WaitForExitAsync(cancellationToken),
+                        pipeTask,
+                        progressTask,
+                        ffmpegMonitorTask
+                    );
+                }
+                catch (OperationCanceledException)
+                {
+                    Debug.WriteLine("RIFE (SVP) processing cancelled");
+                    throw;
+                }
+                finally
+                {
+                    vspipeCancellation.Dispose();
+                    ffmpegCancellation.Dispose();
+                }
 
                 var success = vspipe.ExitCode == 0 && ffmpeg.ExitCode == 0;
 
@@ -441,24 +475,30 @@ public class RifeInterpolationService
                 }
             };
 
-            process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-
-            // Wait for completion with cancellation support
-            while (!process.HasExited)
+            // Register cancellation handler for graceful shutdown
+            var rifeCancellation = cancellationToken.Register(async () =>
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    try
-                    {
-                        process.Kill();
-                    }
-                    catch { }
-                    return false;
-                }
+                Debug.WriteLine("RIFE (Python) cancelled - initiating graceful shutdown...");
+                await ProcessManager.GracefulShutdownAsync(process, gracefulTimeoutMs: 3000, processName: "RIFE (Python)");
+            });
 
-                await Task.Delay(100, cancellationToken);
+            try
+            {
+                process.Start();
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+
+                // Wait for completion with cancellation support
+                await process.WaitForExitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                Debug.WriteLine("RIFE (Python) processing cancelled");
+                return false;
+            }
+            finally
+            {
+                rifeCancellation.Dispose();
             }
 
             var success = process.ExitCode == 0;
@@ -810,6 +850,25 @@ public class RifeInterpolationService
             _ => 422  // Default to 4.22 (latest stable)
         };
 
+        // Determine engine backend
+        var engineBackend = options.Engine switch
+        {
+            RifeEngine.TensorRT => "Backend.TRT",
+            RifeEngine.Vulkan => "Backend.OV_CPU",  // OpenVINO or Vulkan fallback
+            RifeEngine.NCNN => "Backend.NCNN",
+            _ => "Backend.TRT"
+        };
+
+        // GPU threads for TensorRT
+        var gpuThreads = options.GpuThreads;
+
+        // Scene change detection parameters
+        var sceneDetect = options.SceneDetection == SceneChangeDetection.Disabled ? "None" : "True";
+        var sceneBlend = options.SceneProcessing == SceneChangeProcessing.BlendFrames;
+
+        // Target frame height (0 = auto)
+        var targetHeight = options.FrameHeight;
+
         return $@"
 import vapoursynth as vs
 import sys
@@ -867,6 +926,17 @@ height = clip.height
 fps_num = clip.fps.numerator
 fps_den = clip.fps.denominator
 
+# Optional: Resize to target height for processing
+target_height = {targetHeight}
+if target_height > 0 and target_height != height:
+    # Calculate proportional width
+    target_width = int(width * target_height / height)
+    # Ensure even dimensions
+    target_width = target_width if target_width % 2 == 0 else target_width + 1
+    clip = core.resize.Bicubic(clip, width=target_width, height=target_height)
+    width = target_width
+    height = target_height
+
 # Convert to RGB 32-bit float (RGBS) - required by vsmlrt.RIFE
 clip = core.resize.Bicubic(clip, format=vs.RGBS, matrix_in_s='709')
 
@@ -886,9 +956,10 @@ if padded_width != width or padded_height != height:
 
 # Apply RIFE interpolation using SVP's vsmlrt module
 try:
-    # Configure TensorRT backend
-    backend = Backend.TRT(
-        num_streams=2,
+    # Configure backend based on engine selection
+    backend = {engineBackend}(
+        num_streams={gpuThreads},
+        device_id={options.GpuId},
         force_fp16=True,
         output_format=1,
         workspace=None,
@@ -897,7 +968,8 @@ try:
     )
 
     # Apply RIFE using vsmlrt - use positional args like SVP's helpers.py
-    clip = RIFE(clip, {multiplier}, 1.0, None, None, None, {modelId}, backend, {(options.TtaMode ? "True" : "False")}, False, None)
+    # RIFE(clip, multi, scale, ensemble, tiles, model_num, model, backend, tta, uhd, sc)
+    clip = RIFE(clip, {multiplier}, 1.0, None, None, None, {modelId}, backend, {(options.TtaMode ? "True" : "False")}, {(options.UhdMode ? "True" : "False")}, {sceneDetect})
 
 except Exception as e:
     # If RIFE fails, raise error so we know what happened

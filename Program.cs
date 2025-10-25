@@ -37,6 +37,10 @@ class Program
         builder.Services.AddScoped<ShotcutService>();
         builder.Services.AddScoped<FileSearchService>();
 
+        // Dependency management services
+        builder.Services.AddSingleton<DependencyChecker>();
+        builder.Services.AddSingleton<DependencyInstaller>();
+
         // Video rendering services
         // FFmpegRenderService is Singleton to ensure FFMpegCore is configured once on startup
         builder.Services.AddSingleton<FFmpegRenderService>();
@@ -59,6 +63,10 @@ class Program
             return new CheapShotcutRandomizer.Services.RIFE.RifeInterpolationService();
         });
         builder.Services.AddScoped<CheapShotcutRandomizer.Services.RIFE.RifeVideoProcessingPipeline>();
+
+        // AI Upscaling services
+        builder.Services.AddScoped<CheapShotcutRandomizer.Services.RealESRGAN.RealEsrganService>();
+        builder.Services.AddScoped<CheapShotcutRandomizer.Services.RealCUGAN.RealCuganService>();
 
         // Utility services
         builder.Services.AddScoped<CheapShotcutRandomizer.Services.Utilities.VideoValidator>();

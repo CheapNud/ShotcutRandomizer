@@ -1,17 +1,17 @@
 namespace CheapShotcutRandomizer.Models;
 
 /// <summary>
-/// Type of render job
+/// Source file type for render job
 /// </summary>
 public enum RenderType
 {
     /// <summary>
-    /// Standard MLT project rendering
+    /// Source is an MLT project file (.mlt)
     /// </summary>
-    MltProject,
+    MltSource,
 
     /// <summary>
-    /// RIFE frame interpolation workflow
+    /// Source is a video file (mp4, mkv, etc.)
     /// </summary>
-    RifeInterpolation
+    VideoSource
 }

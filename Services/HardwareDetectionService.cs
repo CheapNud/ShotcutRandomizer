@@ -25,7 +25,8 @@ public class HardwareDetectionService(SvpDetectionService svpDetection)
             CpuName = GetCpuName(),
             HasNvidiaGpu = await DetectNvidiaGpuAsync(),
             GpuName = GetGpuName(),
-            NvencAvailable = await IsNvencAvailableAsync()
+            NvencAvailable = await IsNvencAvailableAsync(),
+            AvailableGpus = GetAllGpuNames()
         };
 
         // Detect individual hardware encoders
@@ -227,6 +228,76 @@ public class HardwareDetectionService(SvpDetectionService svpDetection)
         catch
         {
             return "Unknown GPU";
+        }
+    }
+
+    /// <summary>
+    /// Get all available GPU names (for multi-GPU systems)
+    /// </summary>
+    private List<string> GetAllGpuNames()
+    {
+        var gpuList = new List<string>();
+
+        try
+        {
+            var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_VideoController");
+            var results = searcher.Get();
+
+            foreach (ManagementObject obj in results)
+            {
+                var name = obj["Name"]?.ToString();
+                if (!string.IsNullOrEmpty(name))
+                {
+                    gpuList.Add(name);
+                }
+            }
+
+            // If no GPUs found via WMI, try nvidia-smi for NVIDIA GPUs
+            if (gpuList.Count == 0)
+            {
+                try
+                {
+                    var process = new Process
+                    {
+                        StartInfo = new ProcessStartInfo
+                        {
+                            FileName = "nvidia-smi",
+                            Arguments = "--query-gpu=name --format=csv,noheader",
+                            RedirectStandardOutput = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        }
+                    };
+
+                    process.Start();
+                    var output = process.StandardOutput.ReadToEnd();
+                    process.WaitForExit();
+
+                    if (process.ExitCode == 0)
+                    {
+                        var gpuNames = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                        gpuList.AddRange(gpuNames);
+                    }
+                }
+                catch
+                {
+                    // nvidia-smi not available
+                }
+            }
+
+            // If still no GPUs found, add a default entry
+            if (gpuList.Count == 0)
+            {
+                gpuList.Add("Unknown GPU");
+            }
+
+            Debug.WriteLine($"Detected {gpuList.Count} GPU(s): {string.Join(", ", gpuList)}");
+            return gpuList;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error detecting GPUs: {ex.Message}");
+            return new List<string> { "Unknown GPU" };
         }
     }
 
@@ -582,6 +653,9 @@ public class HardwareCapabilities
     public bool HasNvidiaGpu { get; set; }
     public string GpuName { get; set; } = "Unknown";
     public bool NvencAvailable { get; set; }
+
+    // Multi-GPU support
+    public List<string> AvailableGpus { get; set; } = new();
 
     // Hardware encoder availability
     public Dictionary<string, HardwareEncoderInfo> SupportedEncoders { get; set; } = new();

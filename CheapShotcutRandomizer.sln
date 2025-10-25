@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CheapHelpers.Models", "..\C
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CheapHelpers.Services", "..\CheapHelpers\CheapHelpers.Services\CheapHelpers.Services.csproj", "{AC41BBF2-5A71-A2AD-D6B1-E4ACC4E290F0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CheapShotcutRandomizer.Tests", "CheapShotcutRandomizer.Tests\CheapShotcutRandomizer.Tests.csproj", "{99847745-2A37-451B-BE5F-726B8DC0308F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -97,6 +99,18 @@ Global
 		{AC41BBF2-5A71-A2AD-D6B1-E4ACC4E290F0}.Release|x64.Build.0 = Release|Any CPU
 		{AC41BBF2-5A71-A2AD-D6B1-E4ACC4E290F0}.Release|x86.ActiveCfg = Release|Any CPU
 		{AC41BBF2-5A71-A2AD-D6B1-E4ACC4E290F0}.Release|x86.Build.0 = Release|Any CPU
+		{99847745-2A37-451B-BE5F-726B8DC0308F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{99847745-2A37-451B-BE5F-726B8DC0308F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{99847745-2A37-451B-BE5F-726B8DC0308F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{99847745-2A37-451B-BE5F-726B8DC0308F}.Debug|x64.Build.0 = Debug|Any CPU
+		{99847745-2A37-451B-BE5F-726B8DC0308F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{99847745-2A37-451B-BE5F-726B8DC0308F}.Debug|x86.Build.0 = Debug|Any CPU
+		{99847745-2A37-451B-BE5F-726B8DC0308F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{99847745-2A37-451B-BE5F-726B8DC0308F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{99847745-2A37-451B-BE5F-726B8DC0308F}.Release|x64.ActiveCfg = Release|Any CPU
+		{99847745-2A37-451B-BE5F-726B8DC0308F}.Release|x64.Build.0 = Release|Any CPU
+		{99847745-2A37-451B-BE5F-726B8DC0308F}.Release|x86.ActiveCfg = Release|Any CPU
+		{99847745-2A37-451B-BE5F-726B8DC0308F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

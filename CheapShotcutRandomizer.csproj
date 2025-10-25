@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <!-- CheapHelpers Project References -->
+    <PackageReference Include="SharpCompress" Version="0.41.0" />
     <ProjectReference Include="..\CheapHelpers\CheapHelpers.Blazor\CheapHelpers.Blazor.csproj" />
     <ProjectReference Include="..\CheapHelpers\CheapHelpers.Services\CheapHelpers.Services.csproj" />
     <ProjectReference Include="..\CheapHelpers\CheapHelpers\CheapHelpers.csproj" />
@@ -50,6 +51,14 @@
 
   <ItemGroup>
     <Folder Include="Components\Shared\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Exclude test project files from main project compilation -->
+    <Compile Remove="CheapShotcutRandomizer.Tests/**" />
+    <Content Remove="CheapShotcutRandomizer.Tests/**" />
+    <EmbeddedResource Remove="CheapShotcutRandomizer.Tests/**" />
+    <None Remove="CheapShotcutRandomizer.Tests/**" />
   </ItemGroup>
 
 </Project>
