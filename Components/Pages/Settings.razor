@@ -2399,197 +2399,208 @@ except Exception as e:
                     Snackbar.Add("vs-mlrt DLLs installed, but Python script installation failed", Severity.Warning);
                 }
 
-                // Step 4: Download and install TensorRT-RTX for maximum performance
+                // Step 4: Install standard NVIDIA TensorRT for maximum performance
+                // NOTE: Standard TensorRT provides full CUBLAS tactic source support
+                // TensorRT-RTX has limited tactic source support and causes compatibility issues
                 try
                 {
-                    System.Diagnostics.Debug.WriteLine("Downloading TensorRT-RTX for maximum performance...");
-                    Snackbar.Add("Downloading TensorRT-RTX for maximum performance...", Severity.Info);
+                    System.Diagnostics.Debug.WriteLine("Checking CUDA driver version...");
 
-                    var tensorrtUrl = "https://developer.nvidia.com/downloads/trt/rtx_sdk/secure/1.0/TensorRT-RTX-1.0.0.21.Windows.win10.cuda-12.9.zip";
-                    var tensorrtDownloadPath = System.IO.Path.Combine(tempPath, "tensorrt-rtx.zip");
+                    // Check CUDA version via nvidia-smi
+                    bool cudaVersionSufficient = false;
+                    string cudaVersion = "Unknown";
 
-                    using (var client = new HttpClient())
+                    try
                     {
-                        client.Timeout = TimeSpan.FromMinutes(30); // Large file
-                        var tensorrtResponse = await client.GetAsync(tensorrtUrl);
-                        tensorrtResponse.EnsureSuccessStatusCode();
-
-                        await using var fs = new FileStream(tensorrtDownloadPath, FileMode.Create, FileAccess.Write, FileShare.None);
-                        await tensorrtResponse.Content.CopyToAsync(fs);
-                    }
-
-                    System.Diagnostics.Debug.WriteLine($"TensorRT-RTX downloaded to: {tensorrtDownloadPath}");
-
-                    // Extract TensorRT-RTX
-                    var tensorrtExtractPath = System.IO.Path.Combine(tempPath, "tensorrt_extract");
-                    if (System.IO.Directory.Exists(tensorrtExtractPath))
-                    {
-                        System.IO.Directory.Delete(tensorrtExtractPath, true);
-                    }
-                    System.IO.Directory.CreateDirectory(tensorrtExtractPath);
-
-                    Snackbar.Add("Extracting TensorRT-RTX...", Severity.Info);
-                    System.Diagnostics.Debug.WriteLine("Extracting TensorRT-RTX archive...");
-
-                    // Use same extraction logic as vs-mlrt (WinRAR > 7-Zip > SharpCompress)
-                    bool tensorrtExtracted = false;
-
-                    // Try WinRAR first
-                    if (winRarPath != null)
-                    {
-                        try
+                        var nvidiaSmiProcess = new System.Diagnostics.Process
                         {
-                            var process = new System.Diagnostics.Process
+                            StartInfo = new System.Diagnostics.ProcessStartInfo
                             {
-                                StartInfo = new System.Diagnostics.ProcessStartInfo
-                                {
-                                    FileName = winRarPath,
-                                    Arguments = $"x -y \"{tensorrtDownloadPath}\" \"{tensorrtExtractPath}\\\"",
-                                    RedirectStandardOutput = true,
-                                    RedirectStandardError = true,
-                                    UseShellExecute = false,
-                                    CreateNoWindow = true
-                                }
-                            };
+                                FileName = "nvidia-smi",
+                                Arguments = "--query-gpu=driver_version --format=csv,noheader",
+                                RedirectStandardOutput = true,
+                                RedirectStandardError = true,
+                                UseShellExecute = false,
+                                CreateNoWindow = true
+                            }
+                        };
 
-                            process.Start();
-                            await process.WaitForExitAsync();
-                            tensorrtExtracted = process.ExitCode == 0;
+                        nvidiaSmiProcess.Start();
+                        var driverVersion = nvidiaSmiProcess.StandardOutput.ReadToEnd().Trim();
+                        nvidiaSmiProcess.WaitForExit();
+
+                        // Get CUDA version from nvidia-smi
+                        var nvidiaSmiCudaProcess = new System.Diagnostics.Process
+                        {
+                            StartInfo = new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = "nvidia-smi",
+                                RedirectStandardOutput = true,
+                                RedirectStandardError = true,
+                                UseShellExecute = false,
+                                CreateNoWindow = true
+                            }
+                        };
+
+                        nvidiaSmiCudaProcess.Start();
+                        var nvidiaSmiOutput = nvidiaSmiCudaProcess.StandardOutput.ReadToEnd();
+                        nvidiaSmiCudaProcess.WaitForExit();
+
+                        // Parse CUDA version from nvidia-smi output (e.g., "CUDA Version: 12.8")
+                        var cudaMatch = System.Text.RegularExpressions.Regex.Match(nvidiaSmiOutput, @"CUDA Version:\s+(\d+\.\d+)");
+                        if (cudaMatch.Success)
+                        {
+                            cudaVersion = cudaMatch.Groups[1].Value;
+                            var cudaVersionParts = cudaVersion.Split('.');
+                            if (cudaVersionParts.Length >= 2)
+                            {
+                                var majorVersion = int.Parse(cudaVersionParts[0]);
+                                cudaVersionSufficient = majorVersion >= 13;
+                            }
                         }
-                        catch { }
-                    }
 
-                    // Try 7-Zip if WinRAR failed
-                    if (!tensorrtExtracted)
-                    {
-                        var sevenZipPath = Find7ZipExecutable();
-                        if (sevenZipPath != null)
+                        System.Diagnostics.Debug.WriteLine($"NVIDIA Driver: {driverVersion}, CUDA: {cudaVersion}");
+
+                        if (!cudaVersionSufficient)
                         {
-                            try
+                            System.Diagnostics.Debug.WriteLine($"⚠️ CUDA {cudaVersion} detected - TensorRT 10.13.3.9 requires CUDA 13.0+");
+                            Snackbar.Add($"⚠️ Update NVIDIA drivers! Current CUDA: {cudaVersion}, Required: 13.0+", Severity.Warning, config =>
                             {
-                                var process = new System.Diagnostics.Process
-                                {
-                                    StartInfo = new System.Diagnostics.ProcessStartInfo
-                                    {
-                                        FileName = sevenZipPath,
-                                        Arguments = $"x \"{tensorrtDownloadPath}\" -y -o\"{tensorrtExtractPath}\"",
-                                        RedirectStandardOutput = true,
-                                        RedirectStandardError = true,
-                                        UseShellExecute = false,
-                                        CreateNoWindow = true
-                                    }
-                                };
+                                config.VisibleStateDuration = 10000; // Show for 10 seconds
+                            });
 
-                                process.Start();
-                                await process.WaitForExitAsync();
-                                tensorrtExtracted = process.ExitCode == 0;
-                            }
-                            catch { }
-                        }
-                    }
-
-                    // Fallback to SharpCompress
-                    if (!tensorrtExtracted)
-                    {
-                        System.Diagnostics.Debug.WriteLine("Using SharpCompress for TensorRT-RTX extraction...");
-                        using var archive = ArchiveFactory.Open(tensorrtDownloadPath);
-                        foreach (var entry in archive.Entries.Where(entry => !entry.IsDirectory))
-                        {
-                            entry.WriteToDirectory(tensorrtExtractPath, new ExtractionOptions { ExtractFullPath = true, Overwrite = true });
-                        }
-                        tensorrtExtracted = true;
-                    }
-
-                    if (tensorrtExtracted)
-                    {
-                        System.Diagnostics.Debug.WriteLine("TensorRT-RTX extraction successful");
-
-                        // Find the lib folder containing TensorRT DLLs
-                        var libFolders = System.IO.Directory.GetDirectories(tensorrtExtractPath, "lib", System.IO.SearchOption.AllDirectories);
-
-                        if (libFolders.Length > 0)
-                        {
-                            var libFolder = libFolders[0];
-                            System.Diagnostics.Debug.WriteLine($"Found TensorRT lib folder: {libFolder}");
-
-                            // Create vsmlrt-cuda subfolder for TensorRT DLLs
-                            var vsmlrtCudaDir = System.IO.Path.Combine(userPluginsDir, "vsmlrt-cuda");
-                            if (!System.IO.Directory.Exists(vsmlrtCudaDir))
-                            {
-                                System.IO.Directory.CreateDirectory(vsmlrtCudaDir);
-                                System.Diagnostics.Debug.WriteLine($"Created vsmlrt-cuda directory: {vsmlrtCudaDir}");
-                            }
-
-                            // Copy TensorRT DLLs from lib folder to vsmlrt-cuda
-                            var tensorrtDlls = System.IO.Directory.GetFiles(libFolder, "*.dll", System.IO.SearchOption.TopDirectoryOnly);
-                            int tensorrtCopied = 0;
-
-                            foreach (var dll in tensorrtDlls)
-                            {
-                                var dllFileName = System.IO.Path.GetFileName(dll);
-                                var destPath = System.IO.Path.Combine(vsmlrtCudaDir, dllFileName);
-
-                                try
-                                {
-                                    System.IO.File.Copy(dll, destPath, overwrite: true);
-                                    System.Diagnostics.Debug.WriteLine($"Copied TensorRT DLL: {dllFileName}");
-                                    tensorrtCopied++;
-                                }
-                                catch (Exception copyEx)
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"Failed to copy {dllFileName}: {copyEx.Message}");
-                                }
-                            }
-
-                            // Also copy all existing DLLs from plugins64 to vsmlrt-cuda subfolder
-                            // (nvinfer*.dll, cudart*.dll, etc. that were installed with vs-mlrt)
-                            var existingDlls = System.IO.Directory.GetFiles(userPluginsDir, "*.dll", System.IO.SearchOption.TopDirectoryOnly);
-                            foreach (var dll in existingDlls)
-                            {
-                                var existingDllName = System.IO.Path.GetFileName(dll);
-                                var destPath = System.IO.Path.Combine(vsmlrtCudaDir, existingDllName);
-
-                                try
-                                {
-                                    // Don't overwrite if already exists (TensorRT DLLs have priority)
-                                    if (!System.IO.File.Exists(destPath))
-                                    {
-                                        System.IO.File.Copy(dll, destPath, overwrite: false);
-                                    }
-                                }
-                                catch
-                                {
-                                    // Ignore copy errors for existing DLLs
-                                }
-                            }
-
-                            System.Diagnostics.Debug.WriteLine($"✅ Copied {tensorrtCopied} TensorRT-RTX DLLs to vsmlrt-cuda folder");
-                            Snackbar.Add($"TensorRT-RTX installed ({tensorrtCopied} DLLs) - Maximum performance enabled!", Severity.Success);
+                            // Still continue with installation, but warn user
+                            System.Diagnostics.Debug.WriteLine("TensorRT installation will continue, but may fail at runtime without driver update");
                         }
                         else
                         {
-                            System.Diagnostics.Debug.WriteLine("⚠️ Could not find lib folder in TensorRT-RTX archive");
-                            Snackbar.Add("TensorRT-RTX extracted but lib folder not found", Severity.Warning);
+                            System.Diagnostics.Debug.WriteLine($"✅ CUDA {cudaVersion} is sufficient for TensorRT 10.13.3.9");
+                        }
+                    }
+                    catch (Exception cudaCheckEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Could not check CUDA version: {cudaCheckEx.Message}");
+                        // Continue anyway - nvidia-smi might not be in PATH
+                    }
+
+                    System.Diagnostics.Debug.WriteLine("Looking for NVIDIA TensorRT installation...");
+                    Snackbar.Add("Looking for NVIDIA TensorRT...", Severity.Info);
+
+                    // Look for TensorRT in Downloads folder
+                    // Expected pattern: TensorRT-10.13.3.9.Windows.win10.cuda-13.0\TensorRT-10.13.3.9
+                    var downloadsPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                    string? tensorrtRootPath = null;
+
+                    // Search for TensorRT-10.* folders
+                    if (System.IO.Directory.Exists(downloadsPath))
+                    {
+                        var tensorrtFolders = System.IO.Directory.GetDirectories(downloadsPath, "TensorRT-10.*", System.IO.SearchOption.TopDirectoryOnly);
+
+                        foreach (var folder in tensorrtFolders)
+                        {
+                            // Look for nested TensorRT folder (e.g., TensorRT-10.13.3.9.Windows.win10.cuda-13.0\TensorRT-10.13.3.9)
+                            var nestedFolders = System.IO.Directory.GetDirectories(folder, "TensorRT-*", System.IO.SearchOption.TopDirectoryOnly);
+                            if (nestedFolders.Length > 0)
+                            {
+                                // Verify it has bin and lib folders
+                                var binPath = System.IO.Path.Combine(nestedFolders[0], "bin");
+                                var libPath = System.IO.Path.Combine(nestedFolders[0], "lib");
+
+                                if (System.IO.Directory.Exists(binPath) && System.IO.Directory.Exists(libPath))
+                                {
+                                    tensorrtRootPath = nestedFolders[0];
+                                    System.Diagnostics.Debug.WriteLine($"Found TensorRT installation: {tensorrtRootPath}");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (tensorrtRootPath != null)
+                    {
+                        var binFolder = System.IO.Path.Combine(tensorrtRootPath, "bin");
+                        var libFolder = System.IO.Path.Combine(tensorrtRootPath, "lib");
+
+                        // Create vsmlrt-cuda subfolder for TensorRT files
+                        var vsmlrtCudaDir = System.IO.Path.Combine(userPluginsDir, "vsmlrt-cuda");
+                        if (!System.IO.Directory.Exists(vsmlrtCudaDir))
+                        {
+                            System.IO.Directory.CreateDirectory(vsmlrtCudaDir);
+                            System.Diagnostics.Debug.WriteLine($"Created vsmlrt-cuda directory: {vsmlrtCudaDir}");
                         }
 
-                        // Cleanup TensorRT download and extraction
-                        try
+                        int filesCopied = 0;
+
+                        // Copy trtexec.exe from bin folder
+                        var trtexecPath = System.IO.Path.Combine(binFolder, "trtexec.exe");
+                        if (System.IO.File.Exists(trtexecPath))
                         {
-                            System.IO.File.Delete(tensorrtDownloadPath);
-                            System.IO.Directory.Delete(tensorrtExtractPath, true);
+                            var destTrtexec = System.IO.Path.Combine(vsmlrtCudaDir, "trtexec.exe");
+                            System.IO.File.Copy(trtexecPath, destTrtexec, overwrite: true);
+                            System.Diagnostics.Debug.WriteLine("✅ Copied trtexec.exe");
+                            filesCopied++;
                         }
-                        catch { }
+
+                        // Copy all DLLs from lib folder
+                        var tensorrtDlls = System.IO.Directory.GetFiles(libFolder, "*.dll", System.IO.SearchOption.TopDirectoryOnly);
+                        foreach (var dll in tensorrtDlls)
+                        {
+                            var dllFileName = System.IO.Path.GetFileName(dll);
+                            var destPath = System.IO.Path.Combine(vsmlrtCudaDir, dllFileName);
+
+                            try
+                            {
+                                System.IO.File.Copy(dll, destPath, overwrite: true);
+                                System.Diagnostics.Debug.WriteLine($"Copied TensorRT DLL: {dllFileName}");
+                                filesCopied++;
+                            }
+                            catch (Exception copyEx)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"Failed to copy {dllFileName}: {copyEx.Message}");
+                            }
+                        }
+
+                        // Also copy all existing DLLs from plugins64 to vsmlrt-cuda subfolder
+                        // (cudart*.dll, etc. that were installed with vs-mlrt)
+                        var existingDlls = System.IO.Directory.GetFiles(userPluginsDir, "*.dll", System.IO.SearchOption.TopDirectoryOnly);
+                        foreach (var dll in existingDlls)
+                        {
+                            var existingDllName = System.IO.Path.GetFileName(dll);
+                            var destPath = System.IO.Path.Combine(vsmlrtCudaDir, existingDllName);
+
+                            try
+                            {
+                                // Don't overwrite if already exists (TensorRT DLLs have priority)
+                                if (!System.IO.File.Exists(destPath))
+                                {
+                                    System.IO.File.Copy(dll, destPath, overwrite: false);
+                                }
+                            }
+                            catch
+                            {
+                                // Ignore copy errors for existing DLLs
+                            }
+                        }
+
+                        System.Diagnostics.Debug.WriteLine($"✅ Installed {filesCopied} TensorRT files to vsmlrt-cuda folder");
+                        Snackbar.Add($"NVIDIA TensorRT installed ({filesCopied} files) - Maximum performance enabled!", Severity.Success);
                     }
                     else
                     {
-                        System.Diagnostics.Debug.WriteLine("❌ TensorRT-RTX extraction failed");
-                        Snackbar.Add("TensorRT-RTX extraction failed - CUDA backend will be used instead", Severity.Warning);
+                        System.Diagnostics.Debug.WriteLine("⚠️ TensorRT not found in Downloads folder");
+                        Snackbar.Add("TensorRT not found - download from NVIDIA Developer website", Severity.Warning);
+
+                        // Log instructions for manual download
+                        System.Diagnostics.Debug.WriteLine("To install TensorRT:");
+                        System.Diagnostics.Debug.WriteLine("1. Download TensorRT 10.13.3.9 for Windows/CUDA 13.0 from: https://developer.nvidia.com/tensorrt");
+                        System.Diagnostics.Debug.WriteLine("2. Extract to Downloads folder");
+                        System.Diagnostics.Debug.WriteLine("3. Re-run this installer");
                     }
                 }
                 catch (Exception tensorrtEx)
                 {
-                    System.Diagnostics.Debug.WriteLine($"❌ TensorRT-RTX installation error: {tensorrtEx.Message}");
-                    Snackbar.Add("TensorRT-RTX installation failed - CUDA backend will be used instead", Severity.Warning);
+                    System.Diagnostics.Debug.WriteLine($"❌ TensorRT installation error: {tensorrtEx.Message}");
+                    Snackbar.Add("TensorRT installation failed - CUDA backend will be used instead", Severity.Warning);
                 }
 
                 // Disable broken plugins that cause vsmlrt import to fail
@@ -2625,6 +2636,145 @@ except Exception as e:
                 {
                     System.Diagnostics.Debug.WriteLine($"Warning: Failed to disable broken plugins: {disableEx.Message}");
                     // Non-fatal - continue with installation
+                }
+
+                // Step 5: Download Real-CUGAN models
+                try
+                {
+                    System.Diagnostics.Debug.WriteLine("Downloading Real-CUGAN models...");
+                    Snackbar.Add("Downloading Real-CUGAN AI models...", Severity.Info);
+
+                    // Create models directory
+                    var modelsDir = System.IO.Path.Combine(userPluginsDir, "models", "cugan");
+                    System.IO.Directory.CreateDirectory(modelsDir);
+
+                    // Download model pack from vs-mlrt releases
+                    var modelUrl = "https://github.com/AmusementClub/vs-mlrt/releases/download/model-20211209/cugan_v2.7z";
+                    var modelDownloadPath = System.IO.Path.Combine(tempPath, "cugan_models.7z");
+
+                    using (var client = new HttpClient())
+                    {
+                        client.Timeout = TimeSpan.FromMinutes(10);
+                        var modelResponse = await client.GetAsync(modelUrl);
+                        modelResponse.EnsureSuccessStatusCode();
+
+                        await using var fs = new FileStream(modelDownloadPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                        await modelResponse.Content.CopyToAsync(fs);
+                    }
+
+                    System.Diagnostics.Debug.WriteLine($"Downloaded Real-CUGAN models: {new FileInfo(modelDownloadPath).Length / 1024 / 1024}MB");
+
+                    // Extract models using same extraction logic
+                    var modelExtractPath = System.IO.Path.Combine(tempPath, "cugan_models");
+                    System.IO.Directory.CreateDirectory(modelExtractPath);
+
+                    bool modelExtracted = false;
+
+                    // Try WinRAR first
+                    if (winRarPath != null)
+                    {
+                        var modelExtractProc = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = winRarPath,
+                            Arguments = $"x -y \"{modelDownloadPath}\" \"{modelExtractPath}\"",
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+
+                        using var modelProc = System.Diagnostics.Process.Start(modelExtractProc);
+                        if (modelProc != null)
+                        {
+                            await modelProc.WaitForExitAsync();
+                            modelExtracted = modelProc.ExitCode == 0;
+                        }
+                    }
+
+                    // Try 7-Zip if WinRAR failed
+                    if (!modelExtracted)
+                    {
+                        var sevenZipPathForModels = Find7ZipExecutable();
+                        if (sevenZipPathForModels != null)
+                        {
+                            var modelExtractProc = new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = sevenZipPathForModels,
+                                Arguments = $"x -y -o\"{modelExtractPath}\" \"{modelDownloadPath}\"",
+                                UseShellExecute = false,
+                                CreateNoWindow = true
+                            };
+
+                            using var modelProc = System.Diagnostics.Process.Start(modelExtractProc);
+                            if (modelProc != null)
+                            {
+                                await modelProc.WaitForExitAsync();
+                                modelExtracted = modelProc.ExitCode == 0;
+                            }
+                        }
+                    }
+
+                    // Try SharpCompress as fallback
+                    if (!modelExtracted)
+                    {
+                        try
+                        {
+                            using var archive = SharpCompress.Archives.SevenZip.SevenZipArchive.Open(modelDownloadPath);
+                            foreach (var entry in archive.Entries.Where(e => !e.IsDirectory))
+                            {
+                                entry.WriteToDirectory(modelExtractPath, new SharpCompress.Common.ExtractionOptions { ExtractFullPath = true, Overwrite = true });
+                            }
+                            modelExtracted = true;
+                        }
+                        catch (Exception scEx)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"SharpCompress model extraction failed: {scEx.Message}");
+                        }
+                    }
+
+                    if (modelExtracted)
+                    {
+                        // Copy all .onnx files from extracted folder to models/cugan
+                        var onnxFiles = System.IO.Directory.GetFiles(modelExtractPath, "*.onnx", System.IO.SearchOption.AllDirectories);
+                        int modelsCopied = 0;
+
+                        foreach (var onnxFile in onnxFiles)
+                        {
+                            var modelFileName = System.IO.Path.GetFileName(onnxFile);
+                            var destPath = System.IO.Path.Combine(modelsDir, modelFileName);
+
+                            try
+                            {
+                                System.IO.File.Copy(onnxFile, destPath, overwrite: true);
+                                System.Diagnostics.Debug.WriteLine($"Copied model: {modelFileName}");
+                                modelsCopied++;
+                            }
+                            catch (Exception copyEx)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"Failed to copy {modelFileName}: {copyEx.Message}");
+                            }
+                        }
+
+                        System.Diagnostics.Debug.WriteLine($"✅ Installed {modelsCopied} Real-CUGAN model files");
+                        Snackbar.Add($"Real-CUGAN models installed ({modelsCopied} files)", Severity.Success);
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine("❌ Model extraction failed");
+                        Snackbar.Add("Model installation failed - models will download on first use", Severity.Warning);
+                    }
+
+                    // Cleanup model files
+                    try
+                    {
+                        System.IO.File.Delete(modelDownloadPath);
+                        System.IO.Directory.Delete(modelExtractPath, true);
+                    }
+                    catch { }
+                }
+                catch (Exception modelEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"❌ Model installation error: {modelEx.Message}");
+                    Snackbar.Add("Model installation failed - models will download on first use", Severity.Warning);
+                    // Non-fatal - vs-mlrt will download models on first use
                 }
 
                 // Cleanup vs-mlrt files (after copying everything)

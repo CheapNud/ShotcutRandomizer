@@ -176,8 +176,30 @@ public class RealCuganService
             {
                 if (test != null)
                 {
-                    var testOutput = await test.StandardOutput.ReadToEndAsync();
-                    var testError = await test.StandardError.ReadToEndAsync();
+                    // Use async event-based output reading to prevent deadlock
+                    var testOutputBuilder = new System.Text.StringBuilder();
+                    var testErrorBuilder = new System.Text.StringBuilder();
+
+                    test.OutputDataReceived += (sender, e) =>
+                    {
+                        if (!string.IsNullOrEmpty(e.Data))
+                        {
+                            testOutputBuilder.AppendLine(e.Data);
+                            Debug.WriteLine($"[VapourSynth] {e.Data}");
+                        }
+                    };
+
+                    test.ErrorDataReceived += (sender, e) =>
+                    {
+                        if (!string.IsNullOrEmpty(e.Data))
+                        {
+                            testErrorBuilder.AppendLine(e.Data);
+                            Debug.WriteLine($"[VapourSynth Error] {e.Data}");
+                        }
+                    };
+
+                    test.BeginOutputReadLine();
+                    test.BeginErrorReadLine();
 
                     // Wait up to 10 minutes for model download on first run
                     using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
@@ -191,6 +213,9 @@ public class RealCuganService
                         try { test.Kill(); } catch { }
                         throw new TimeoutException("VapourSynth script test timed out. Model download may have failed.");
                     }
+
+                    var testOutput = testOutputBuilder.ToString();
+                    var testError = testErrorBuilder.ToString();
 
                     // Check if we got valid video information (ignore warnings)
                     // VapourSynth often outputs warnings to stderr that don't prevent operation
@@ -271,8 +296,30 @@ public class RealCuganService
                             using var retryProcess = Process.Start(retryTest);
                             if (retryProcess != null)
                             {
-                                var retryOutput = await retryProcess.StandardOutput.ReadToEndAsync();
-                                var retryError = await retryProcess.StandardError.ReadToEndAsync();
+                                // Use async event-based output reading to prevent deadlock
+                                var retryOutputBuilder = new System.Text.StringBuilder();
+                                var retryErrorBuilder = new System.Text.StringBuilder();
+
+                                retryProcess.OutputDataReceived += (sender, e) =>
+                                {
+                                    if (!string.IsNullOrEmpty(e.Data))
+                                    {
+                                        retryOutputBuilder.AppendLine(e.Data);
+                                        Debug.WriteLine($"[VapourSynth CUDA] {e.Data}");
+                                    }
+                                };
+
+                                retryProcess.ErrorDataReceived += (sender, e) =>
+                                {
+                                    if (!string.IsNullOrEmpty(e.Data))
+                                    {
+                                        retryErrorBuilder.AppendLine(e.Data);
+                                        Debug.WriteLine($"[VapourSynth CUDA Error] {e.Data}");
+                                    }
+                                };
+
+                                retryProcess.BeginOutputReadLine();
+                                retryProcess.BeginErrorReadLine();
 
                                 using var retryCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
                                 try
@@ -285,6 +332,9 @@ public class RealCuganService
                                     try { retryProcess.Kill(); } catch { }
                                     throw new TimeoutException("CUDA backend test timed out. Model download may have failed.");
                                 }
+
+                                var retryOutput = retryOutputBuilder.ToString();
+                                var retryError = retryErrorBuilder.ToString();
 
                                 // Check if CUDA backend produced valid video info
                                 bool cudaValid = retryOutput.Contains("Width:") &&
