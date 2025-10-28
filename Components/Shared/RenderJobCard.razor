@@ -60,7 +60,7 @@
                                    Color="Color.Primary"
                                    Size="Size.Large">
                     <MudText Typo="Typo.body2">
-                        @currentProgress.ToString("F1")%
+                        @currentProgress.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%
                         (@GetProgressTimecode())
                     </MudText>
                 </MudProgressLinear>

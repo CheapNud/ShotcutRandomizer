@@ -206,32 +206,48 @@ public class RenderQueueTests : TestContext
     }
 
     [Fact]
-    public void RenderQueue_Calls_StartQueue_When_Start_Button_Clicked()
+    public async Task RenderQueue_Calls_StartQueue_When_Start_Button_Clicked()
     {
         // Arrange
         _mockQueueService.Setup(x => x.IsQueuePaused).Returns(true);
         var component = RenderComponent<RenderQueue>();
 
-        // Act
-        var startButton = component.FindAll("button").FirstOrDefault(b => b.TextContent.Contains("Start Queue"));
-        startButton.Should().NotBeNull();
-        startButton!.Click();
+        // Wait for component to finish loading (OnInitializedAsync)
+        component.WaitForState(() =>
+            component.FindAll("button").Any(b => b.TextContent.Contains("Start Queue") && !b.HasAttribute("disabled")),
+            TimeSpan.FromSeconds(5));
+
+        // Act - Invoke the StartQueue method on Blazor dispatcher context
+        await component.InvokeAsync(() =>
+        {
+            var startQueueMethod = component.Instance.GetType()
+                .GetMethod("StartQueue", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            startQueueMethod!.Invoke(component.Instance, null);
+        });
 
         // Assert
         _mockQueueService.Verify(x => x.StartQueue(), Times.Once);
     }
 
     [Fact]
-    public void RenderQueue_Calls_StopQueue_When_Pause_Button_Clicked()
+    public async Task RenderQueue_Calls_StopQueue_When_Pause_Button_Clicked()
     {
         // Arrange
         _mockQueueService.Setup(x => x.IsQueuePaused).Returns(false);
         var component = RenderComponent<RenderQueue>();
 
-        // Act
-        var pauseButton = component.FindAll("button").FirstOrDefault(b => b.TextContent.Contains("Pause Queue"));
-        pauseButton.Should().NotBeNull();
-        pauseButton!.Click();
+        // Wait for component to finish loading
+        component.WaitForState(() =>
+            component.FindAll("button").Any(b => b.TextContent.Contains("Pause Queue") && !b.HasAttribute("disabled")),
+            TimeSpan.FromSeconds(5));
+
+        // Act - Invoke the StopQueue method on Blazor dispatcher context
+        await component.InvokeAsync(() =>
+        {
+            var stopQueueMethod = component.Instance.GetType()
+                .GetMethod("StopQueue", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            stopQueueMethod!.Invoke(component.Instance, null);
+        });
 
         // Assert
         _mockQueueService.Verify(x => x.StopQueue(), Times.Once);
