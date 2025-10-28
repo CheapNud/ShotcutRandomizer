@@ -4,6 +4,7 @@ using CheapShotcutRandomizer.Models;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using MudBlazor.Services;
 
 namespace CheapShotcutRandomizer.Tests.Components;
@@ -19,7 +20,7 @@ public class RenderJobCardTests : TestContext
         Services.AddMudServices();
 
         // Setup JSInterop for MudBlazor components
-        JSInterop.Mode = JSInteropMode.Loose;
+        JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
     [Fact]

@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using MudBlazor;
 using MudBlazor.Services;
+using Microsoft.JSInterop;
 
 namespace CheapShotcutRandomizer.Tests.Components;
 
@@ -39,7 +40,7 @@ public class RenderQueueTests : TestContext
         Services.AddSingleton(_mockHardwareService.Object);
 
         // Setup JSInterop for MudBlazor components
-        JSInterop.Mode = JSInteropMode.Loose;
+        JSInterop.Mode = JSRuntimeMode.Loose;
 
         // Setup mock defaults
         _mockQueueService.Setup(x => x.IsQueuePaused).Returns(true);
