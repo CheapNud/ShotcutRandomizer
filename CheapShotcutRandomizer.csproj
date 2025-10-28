@@ -40,7 +40,7 @@
     <PackageReference Include="MudBlazor" Version="8.13.0" />
 
     <!-- FFmpeg wrapper for video processing -->
-    <PackageReference Include="FFMpegCore" Version="5.2.0" />
+    <PackageReference Include="FFMpegCore" Version="5.4.0" />
 
     <!-- Hardware detection (WMI) -->
     <PackageReference Include="System.Management" Version="10.0.0-rc.2.25502.107" />
