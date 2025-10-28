@@ -178,8 +178,11 @@ public class RenderQueueTests : TestContext
         // Act
         var component = RenderComponent<RenderQueue>();
 
-        // Assert - component should load completed jobs
-        _mockQueueService.Verify(x => x.GetCompletedJobsAsync(), Times.AtLeastOnce);
+        // Assert - Wait for async LoadJobs() to complete before verifying
+        // This prevents race conditions in slower CI environments (GitHub Actions)
+        component.WaitForAssertion(() =>
+            _mockQueueService.Verify(x => x.GetCompletedJobsAsync(), Times.AtLeastOnce),
+            TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -201,8 +204,11 @@ public class RenderQueueTests : TestContext
         // Act
         var component = RenderComponent<RenderQueue>();
 
-        // Assert
-        _mockQueueService.Verify(x => x.GetFailedJobsAsync(), Times.AtLeastOnce);
+        // Assert - Wait for async LoadJobs() to complete before verifying
+        // This prevents race conditions in slower CI environments (GitHub Actions)
+        component.WaitForAssertion(() =>
+            _mockQueueService.Verify(x => x.GetFailedJobsAsync(), Times.AtLeastOnce),
+            TimeSpan.FromSeconds(5));
     }
 
     [Fact]
