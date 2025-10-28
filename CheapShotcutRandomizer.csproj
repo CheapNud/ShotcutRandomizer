@@ -9,6 +9,14 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
 
+    <!-- Platform Support - Windows Only -->
+    <!-- Reasons: WMI (System.Management), TensorRT, SVP 4 Pro, NVENC -->
+    <RuntimeIdentifiers>win-x64;win-x86;win-arm64</RuntimeIdentifiers>
+
+    <!-- Suppress CA1416: This is a Windows-only application by design -->
+    <!-- Dependencies: System.Management (WMI), TensorRT, SVP 4 Pro, WindowsIdentity -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+
     <!-- Package Information -->
     <AssemblyTitle>Cheap Shotcut Randomizer</AssemblyTitle>
     <Product>Cheap Shotcut Randomizer</Product>
@@ -20,6 +28,7 @@
 
   <ItemGroup>
     <!-- CheapHelpers Project References -->
+    <PackageReference Include="SharpCompress" Version="0.41.0" />
     <ProjectReference Include="..\CheapHelpers\CheapHelpers.Blazor\CheapHelpers.Blazor.csproj" />
     <ProjectReference Include="..\CheapHelpers\CheapHelpers.Services\CheapHelpers.Services.csproj" />
     <ProjectReference Include="..\CheapHelpers\CheapHelpers\CheapHelpers.csproj" />
@@ -29,10 +38,35 @@
 
     <!-- MudBlazor for UI components -->
     <PackageReference Include="MudBlazor" Version="8.13.0" />
+
+    <!-- FFmpeg wrapper for video processing -->
+    <PackageReference Include="FFMpegCore" Version="5.4.0" />
+
+    <!-- Hardware detection (WMI) -->
+    <PackageReference Include="System.Management" Version="10.0.0-rc.2.25502.107" />
+
+    <!-- Entity Framework Core for render queue database -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.10">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+
+    <!-- Polly for retry logic -->
+    <PackageReference Include="Polly" Version="8.6.4" />
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="Components\Shared\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Exclude test project files from main project compilation -->
+    <Compile Remove="CheapShotcutRandomizer.Tests/**" />
+    <Content Remove="CheapShotcutRandomizer.Tests/**" />
+    <EmbeddedResource Remove="CheapShotcutRandomizer.Tests/**" />
+    <None Remove="CheapShotcutRandomizer.Tests/**" />
   </ItemGroup>
 
 </Project>

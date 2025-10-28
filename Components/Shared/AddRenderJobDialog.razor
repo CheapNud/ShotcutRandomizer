@@ -1,0 +1,1149 @@
+@using CheapShotcutRandomizer.Models
+@using CheapShotcutRandomizer.Services
+@using CheapAvaloniaBlazor.Services
+@inject IDesktopInteropService DesktopInterop
+@inject HardwareDetectionService HardwareService
+@inject ShotcutService ShotcutService
+@inject SettingsService SettingsService
+
+<MudDialog Visible="@IsVisible"
+           VisibleChanged="@OnDialogVisibleChanged"
+           Options="@_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h5">Add Render Job</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+
+            <MudStack Row="true" Spacing="2">
+                <MudTextField @bind-Value="_sourcePath"
+                              Label="Source File"
+                              Variant="Variant.Outlined"
+                              FullWidth="true"
+                              ReadOnly="true" />
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="@BrowseSource">
+                    Browse...
+                </MudButton>
+            </MudStack>
+
+            <MudStack Row="true" Spacing="2">
+                <MudTextField @bind-Value="_outputPath"
+                              Label="Output Path"
+                              Variant="Variant.Outlined"
+                              FullWidth="true"
+                              ReadOnly="true" />
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="@BrowseOutput">
+                    Browse...
+                </MudButton>
+            </MudStack>
+
+            @* Source type auto-detected from file extension *@
+            @if (!string.IsNullOrEmpty(_sourcePath))
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Source Type: @(_isMltSource ? "MLT Project" : "Video File")
+                </MudAlert>
+            }
+
+            @* Optional Processing Steps *@
+            <MudDivider />
+            <MudText Typo="Typo.subtitle2">Optional Processing Steps</MudText>
+
+            <MudSwitch Value="_useRifeInterpolation"
+                      ValueChanged="@(value => { _useRifeInterpolation = value; OnProcessingOptionChanged(); })"
+                      Label="Apply RIFE Frame Interpolation (2x-8x FPS)"
+                      Color="Color.Primary"
+                      ThumbIcon="@(_useRifeInterpolation ? Icons.Material.Filled.Check : null)"
+                      T="bool" />
+            @if (_useRifeInterpolation)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    RIFE will interpolate frames to increase frame rate (e.g., 30fps → 60fps).
+                </MudText>
+            }
+
+            <MudSwitch Value="_useNonAiUpscaling"
+                      ValueChanged="@(value => { _useNonAiUpscaling = value; OnProcessingOptionChanged(); })"
+                      Label="Apply Fast Non-AI Upscaling (xBR/Lanczos/HQx - ULTRA FAST)"
+                      Color="Color.Success"
+                      ThumbIcon="@(_useNonAiUpscaling ? Icons.Material.Filled.Check : null)"
+                      T="bool" />
+            @if (_useNonAiUpscaling)
+            {
+                <MudAlert Severity="Severity.Success" Dense="true" Class="mb-2">
+                    <MudText Typo="Typo.body2" Class="mb-1">
+                        <strong>⚡ Non-AI upscaling is ULTRA FAST (near real-time)</strong>
+                    </MudText>
+                    <MudText Typo="Typo.caption">
+                        <strong>Estimated processing time:</strong><br/>
+                        • 1 minute video: ~6-18 seconds<br/>
+                        • 5 minute video: ~30-90 seconds<br/>
+                        • 30 minute video: ~3-9 minutes<br/>
+                        <br/>
+                        💡 <strong>Tip:</strong> Use Lanczos for general content, xBR for anime, HQx for pixel art.
+                    </MudText>
+                </MudAlert>
+            }
+
+            <MudSwitch Value="_useRealCugan"
+                      ValueChanged="@(value => { _useRealCugan = value; OnProcessingOptionChanged(); })"
+                      Label="Apply Real-CUGAN AI Upscaling (10-13x FASTER than ESRGAN!)"
+                      Color="Color.Tertiary"
+                      ThumbIcon="@(_useRealCugan ? Icons.Material.Filled.Check : null)"
+                      T="bool" />
+            @if (_useRealCugan)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                    <MudText Typo="Typo.body2" Class="mb-1">
+                        <strong>⚡ Real-CUGAN is 10-13x faster than Real-ESRGAN (~10-20 fps on RTX 3080)</strong>
+                    </MudText>
+                    <MudText Typo="Typo.caption">
+                        <strong>Estimated processing time:</strong><br/>
+                        • 1 minute video (1800 frames): ~1.5-3 minutes<br/>
+                        • 5 minute video (9000 frames): ~7.5-15 minutes<br/>
+                        • 30 minute video (54000 frames): ~45-90 minutes<br/>
+                        <br/>
+                        💡 <strong>Tip:</strong> Real-CUGAN is optimized for anime/cartoon content.
+                        CUGAN runs BEFORE RIFE interpolation to minimize processing time.
+                    </MudText>
+                </MudAlert>
+            }
+
+            <MudSwitch Value="_useRealEsrgan"
+                      ValueChanged="@(value => { _useRealEsrgan = value; OnProcessingOptionChanged(); })"
+                      Label="Apply Real-ESRGAN AI Upscaling (2x-4x Resolution)"
+                      Color="Color.Primary"
+                      ThumbIcon="@(_useRealEsrgan ? Icons.Material.Filled.Check : null)"
+                      T="bool" />
+            @if (_useRealEsrgan)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2">
+                    <MudText Typo="Typo.body2" Class="mb-1">
+                        <strong>⚠️ Real-ESRGAN is VERY slow (~1 frame/second on RTX 3080)</strong>
+                    </MudText>
+                    <MudText Typo="Typo.caption">
+                        <strong>Estimated processing time:</strong><br/>
+                        • 1 minute video (1800 frames): ~30 minutes<br/>
+                        • 5 minute video (9000 frames): ~2.5 hours<br/>
+                        • 30 minute video (54000 frames): ~15 hours<br/>
+                        <br/>
+                        💡 <strong>Tip:</strong> ESRGAN runs BEFORE RIFE interpolation to minimize processing time.
+                        Use lower tile sizes (256px) if running out of VRAM.
+                    </MudText>
+                </MudAlert>
+            }
+
+            @* MLT Encoding Settings - Show ONLY for MLT source files *@
+            @if (_isMltSource)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">MLT Render Settings</MudText>
+
+                <MudSlider @bind-Value="_mltThreads"
+                           Min="1"
+                           Max="@_maxThreads"
+                           Step="1"
+                           Color="Color.Primary"
+                           Style="width: 100%;">
+                    CPU Threads: @_mltThreads
+                </MudSlider>
+
+                <MudSelect @bind-Value="_mltPreset"
+                           Label="Quality Preset"
+                           Variant="Variant.Outlined"
+                           T="string">
+                    <MudSelectItem Value="@("ultrafast")" T="string">Ultra Fast</MudSelectItem>
+                    <MudSelectItem Value="@("superfast")" T="string">Super Fast</MudSelectItem>
+                    <MudSelectItem Value="@("veryfast")" T="string">Very Fast</MudSelectItem>
+                    <MudSelectItem Value="@("faster")" T="string">Faster</MudSelectItem>
+                    <MudSelectItem Value="@("fast")" T="string">Fast</MudSelectItem>
+                    <MudSelectItem Value="@("medium")" T="string">Medium (Recommended)</MudSelectItem>
+                    <MudSelectItem Value="@("slow")" T="string">Slow</MudSelectItem>
+                    <MudSelectItem Value="@("slower")" T="string">Slower</MudSelectItem>
+                </MudSelect>
+
+                <MudSlider @bind-Value="_mltCrf"
+                           Min="15"
+                           Max="28"
+                           Step="1"
+                           Color="Color.Primary"
+                           Style="width: 100%;">
+                    Quality (CRF): @_mltCrf (Lower = Better)
+                </MudSlider>
+            }
+
+            @* RIFE Settings - Show when RIFE checkbox is enabled *@
+            @if (_useRifeInterpolation)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">RIFE Interpolation Settings</MudText>
+
+                <MudSlider @bind-Value="_rifeMultiplier"
+                           Min="2"
+                           Max="8"
+                           Step="1"
+                           Color="Color.Primary"
+                           Style="width: 100%;">
+                    Interpolation Multiplier: @_rifeMultiplier x
+                </MudSlider>
+
+                <MudNumericField @bind-Value="_rifeTargetFps"
+                                 Label="Target FPS"
+                                 Variant="Variant.Outlined"
+                                 Min="30"
+                                 Max="240"
+                                 T="int" />
+
+                <MudSelect @bind-Value="_rifeQuality"
+                           Label="Quality Preset"
+                           Variant="Variant.Outlined"
+                           T="string">
+                    <MudSelectItem Value="@("draft")" T="string">Draft (Fastest)</MudSelectItem>
+                    <MudSelectItem Value="@("medium")" T="string">Medium (Recommended)</MudSelectItem>
+                    <MudSelectItem Value="@("high")" T="string">High Quality</MudSelectItem>
+                </MudSelect>
+            }
+
+            @* Non-AI Upscaling Settings - Show when checkbox is enabled *@
+            @if (_useNonAiUpscaling)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Non-AI Upscaling Settings</MudText>
+
+                <MudSelect @bind-Value="_nonAiAlgorithm"
+                           Label="Upscaling Algorithm"
+                           Variant="Variant.Outlined"
+                           T="string">
+                    <MudSelectItem Value="@("lanczos")" T="string">Lanczos (Smooth, General Content)</MudSelectItem>
+                    <MudSelectItem Value="@("xbr")" T="string">xBR (Sharp, Anime/Pixel Art)</MudSelectItem>
+                    <MudSelectItem Value="@("hqx")" T="string">HQx (High-Quality, Pixel Art)</MudSelectItem>
+                </MudSelect>
+
+                <MudSelect @bind-Value="_nonAiScaleFactor"
+                           Label="Scale Factor"
+                           Variant="Variant.Outlined"
+                           T="int">
+                    <MudSelectItem Value="@(2)" T="int">2x (720p → 1440p, 1080p → 2160p)</MudSelectItem>
+                    <MudSelectItem Value="@(3)" T="int">3x (720p → 2160p)</MudSelectItem>
+                    <MudSelectItem Value="@(4)" T="int">4x (540p → 2160p, 720p → 2880p)</MudSelectItem>
+                </MudSelect>
+
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Non-AI upscaling is extremely fast (near real-time) but quality depends on source content.
+                </MudAlert>
+            }
+
+            @* Real-CUGAN Settings - Show when checkbox is enabled *@
+            @if (_useRealCugan)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Real-CUGAN AI Upscaling Settings</MudText>
+
+                <MudSelect @bind-Value="_cuganNoise"
+                           Label="Noise Reduction Level"
+                           Variant="Variant.Outlined"
+                           T="int">
+                    <MudSelectItem Value="@(-1)" T="int">No Denoising (Recommended)</MudSelectItem>
+                    <MudSelectItem Value="@(0)" T="int">Conservative Denoising</MudSelectItem>
+                    <MudSelectItem Value="@(1)" T="int">Light Denoising (2x only)</MudSelectItem>
+                    <MudSelectItem Value="@(2)" T="int">Medium Denoising (2x only)</MudSelectItem>
+                    <MudSelectItem Value="@(3)" T="int">Aggressive Denoising</MudSelectItem>
+                </MudSelect>
+
+                <MudSelect @bind-Value="_cuganScale"
+                           Label="Scale Factor"
+                           Variant="Variant.Outlined"
+                           T="int">
+                    <MudSelectItem Value="@(2)" T="int">2x (720p → 1440p, 1080p → 2160p)</MudSelectItem>
+                    <MudSelectItem Value="@(3)" T="int">3x (720p → 2160p, noise -1/0/3 only)</MudSelectItem>
+                    <MudSelectItem Value="@(4)" T="int">4x (540p → 2160p, noise -1/0/3 only)</MudSelectItem>
+                </MudSelect>
+
+                <MudSelect @bind-Value="_cuganBackend"
+                           Label="Processing Backend"
+                           Variant="Variant.Outlined"
+                           T="int">
+                    <MudSelectItem Value="@(0)" T="int">TensorRT (NVIDIA, Fastest - Recommended)</MudSelectItem>
+                    <MudSelectItem Value="@(1)" T="int">CUDA (NVIDIA, Compatible)</MudSelectItem>
+                    <MudSelectItem Value="@(2)" T="int">CPU OpenVINO (Fallback, Slow)</MudSelectItem>
+                </MudSelect>
+
+                <MudSlider @bind-Value="_cuganNumStreams"
+                           Min="1"
+                           Max="8"
+                           Step="1"
+                           Color="Color.Tertiary"
+                           Style="width: 100%;">
+                    Parallel Streams: @_cuganNumStreams (Higher = More VRAM)
+                </MudSlider>
+
+                <MudSwitch @bind-Value="_cuganUseFp16"
+                          Label="FP16 Mode (50% faster, recommended)"
+                          Color="Color.Tertiary"
+                          T="bool" />
+
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Real-CUGAN with TensorRT is 10-13x faster than Real-ESRGAN. Optimized for anime/cartoon content.
+                    First run may take 5-15 minutes to compile TensorRT engine (cached for subsequent runs).
+                </MudAlert>
+            }
+
+            @* Real-ESRGAN Settings - Show when checkbox is enabled *@
+            @if (_useRealEsrgan)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Real-ESRGAN AI Upscaling Settings</MudText>
+
+                <MudSelect @bind-Value="_esrganModelName"
+                           Label="AI Model"
+                           Variant="Variant.Outlined"
+                           T="string">
+                    <MudSelectItem Value="@("RealESRGAN_x4plus")" T="string">RealESRGAN_x4plus (General, 4x)</MudSelectItem>
+                    <MudSelectItem Value="@("RealESRGAN_x4plus_anime_6B")" T="string">RealESRGAN_x4plus_anime_6B (Anime, 4x)</MudSelectItem>
+                    <MudSelectItem Value="@("RealESRGAN_x2plus")" T="string">RealESRGAN_x2plus (General, 2x)</MudSelectItem>
+                    <MudSelectItem Value="@("realesr-general-x4v3")" T="string">realesr-general-x4v3 (Best Quality, 4x)</MudSelectItem>
+                    <MudSelectItem Value="@("RealESRGAN_AnimeVideo-v3")" T="string">RealESRGAN_AnimeVideo-v3 (Anime Video)</MudSelectItem>
+                </MudSelect>
+
+                <MudSelect @bind-Value="_esrganScaleFactor"
+                           Label="Scale Factor"
+                           Variant="Variant.Outlined"
+                           T="int">
+                    <MudSelectItem Value="@(2)" T="int">2x (720p → 1440p)</MudSelectItem>
+                    <MudSelectItem Value="@(4)" T="int">4x (720p → 2880p)</MudSelectItem>
+                </MudSelect>
+
+                <MudNumericField @bind-Value="_esrganTileSize"
+                                 Label="Tile Size (0=disabled)"
+                                 Variant="Variant.Outlined"
+                                 Min="0"
+                                 Max="1024"
+                                 Step="64"
+                                 HelperText="256-512 recommended for VRAM management"
+                                 T="int" />
+
+                <MudStack Row="true" Spacing="2">
+                    <MudSwitch @bind-Value="_esrganUseFp16"
+                              Label="FP16 Mode (50% faster)"
+                              Color="Color.Primary"
+                              T="bool" />
+                    <MudSwitch @bind-Value="_esrganTileMode"
+                              Label="Enable Tile Mode"
+                              Color="Color.Primary"
+                              T="bool" />
+                </MudStack>
+
+                <MudAlert Severity="Severity.Warning" Dense="true">
+                    Real-ESRGAN is very slow (~0.5-1 fps). Use FP16 and tile mode for best performance.
+                </MudAlert>
+            }
+
+            @* Track Selection - Show for MLT source files only, when ShowTrackSelection is true *@
+            @if (ShowTrackSelection && _isMltSource && _tracks.Any())
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Track Selection</MudText>
+
+                @if (_videoTracks.Any())
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Primary">Video Tracks</MudText>
+                    <MudStack Row="true" Spacing="2">
+                        @foreach (var track in _videoTracks)
+                        {
+                            <MudCheckBox @bind-Value="track.Selected"
+                                         Label="@track.DisplayName"
+                                         Color="Color.Primary"
+                                         T="bool" />
+                        }
+                    </MudStack>
+                }
+
+                @if (_audioTracks.Any())
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Audio Tracks</MudText>
+                    <MudStack Row="true" Spacing="2">
+                        @foreach (var track in _audioTracks)
+                        {
+                            <MudCheckBox @bind-Value="track.Selected"
+                                         Label="@track.DisplayName"
+                                         Color="Color.Secondary"
+                                         T="bool" />
+                        }
+                    </MudStack>
+                }
+            }
+
+            @* Render Range - Show for MLT sources only, when ShowRenderRange is true *@
+            @if (ShowRenderRange && _isMltSource && !string.IsNullOrEmpty(_renderRangeDescription))
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Render Range</MudText>
+
+                @if (!_useCustomRange)
+                {
+                    <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.ContentCut">
+                        @_renderRangeDescription
+                    </MudAlert>
+                }
+
+                <MudCheckBox @bind-Value="_useCustomRange" T="bool" Label="Override Markers (Custom Range)" Color="Color.Primary" />
+
+                @if (_useCustomRange)
+                {
+                    @if (!string.IsNullOrEmpty(_maxEndTimeDisplay))
+                    {
+                        <MudAlert Severity="Severity.Normal" Dense="true">
+                            Maximum end time: @_maxEndTimeDisplay
+                        </MudAlert>
+                    }
+
+                    <MudStack Row="true" Spacing="2">
+                        <MudTextField @bind-Value="_inPointTimecode"
+                                      Label="Start Time (HH:MM:SS.mmm)"
+                                      Variant="Variant.Outlined"
+                                      Placeholder="00:00:00.000"
+                                      HelperText="Format: HH:MM:SS or HH:MM:SS.mmm"
+                                      Error="@_inPointError"
+                                      ErrorText="@_inPointErrorText" />
+                        <MudTextField @bind-Value="_outPointTimecode"
+                                      Label="End Time (HH:MM:SS.mmm)"
+                                      Variant="Variant.Outlined"
+                                      Placeholder="00:10:30.000"
+                                      HelperText="Format: HH:MM:SS or HH:MM:SS.mmm"
+                                      Error="@_outPointError"
+                                      ErrorText="@_outPointErrorText" />
+                    </MudStack>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Leave empty to render from start or to end
+                    </MudText>
+                }
+            }
+
+            @if (!string.IsNullOrEmpty(_estimatedTime))
+            {
+                <MudAlert Severity="Severity.Info">
+                    @_estimatedTime
+                </MudAlert>
+            }
+
+            @if (!string.IsNullOrEmpty(_validationError))
+            {
+                <MudAlert Severity="Severity.Error">
+                    @_validationError
+                </MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@Cancel" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   OnClick="@AddJob"
+                   Disabled="@(!IsValid())">
+            Add to Queue
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter]
+    public bool IsVisible { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsVisibleChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<RenderJob> OnJobAdded { get; set; }
+
+    [Parameter]
+    public string? PrePopulatedSourcePath { get; set; }
+
+    [Parameter]
+    public bool ShowTrackSelection { get; set; } = true;
+
+    [Parameter]
+    public bool ShowRenderRange { get; set; } = true;
+
+    [Parameter]
+    public string? PreSelectedVideoTracks { get; set; }
+
+    [Parameter]
+    public string? PreSelectedAudioTracks { get; set; }
+
+    private string _sourcePath = string.Empty;
+    private string _outputPath = string.Empty;
+    private bool _isMltSource = false; // Auto-detected from file extension
+
+    // MLT settings
+    private int _mltThreads = Environment.ProcessorCount;
+    private int _maxThreads = Environment.ProcessorCount;
+    private string _mltPreset = "medium";
+    private int _mltCrf = 23;
+
+    // RIFE settings
+    private bool _useRifeInterpolation = false;
+    private int _rifeMultiplier = 2;
+    private int _rifeTargetFps = 60;
+    private string _rifeQuality = "medium";
+
+    // Non-AI upscaling settings
+    private bool _useNonAiUpscaling = false;
+    private string _nonAiAlgorithm = "lanczos";
+    private int _nonAiScaleFactor = 2;
+
+    // Real-CUGAN settings
+    private bool _useRealCugan = false;
+    private int _cuganNoise = -1;
+    private int _cuganScale = 2;
+    private bool _cuganUseFp16 = true;
+    private int _cuganBackend = 0; // 0=TensorRT, 1=CUDA, 2=CPU
+    private int _cuganNumStreams = 2;
+
+    // Real-ESRGAN settings
+    private bool _useRealEsrgan = false;
+    private string _esrganModelName = "RealESRGAN_x4plus";
+    private int _esrganScaleFactor = 4;
+    private int _esrganTileSize = 512;
+    private bool _esrganUseFp16 = true;
+    private bool _esrganTileMode = true;
+
+    private string _estimatedTime = string.Empty;
+    private string _validationError = string.Empty;
+    private HardwareCapabilities? _hardware;
+    private AppSettings? _appSettings;
+
+    // Track selection
+    private List<SelectableTrack> _tracks = [];
+    private List<SelectableTrack> _videoTracks = [];
+    private List<SelectableTrack> _audioTracks = [];
+
+    // Marker/range settings
+    private Mlt? _loadedMltProject;
+    private string _renderRangeDescription = string.Empty;
+    private bool _useCustomRange = false;
+    private int? _customInPoint;
+    private int? _customOutPoint;
+    private string _inPointTimecode = string.Empty;
+    private string _outPointTimecode = string.Empty;
+    private bool _inPointError = false;
+    private string _inPointErrorText = string.Empty;
+    private bool _outPointError = false;
+    private string _outPointErrorText = string.Empty;
+    private string _maxEndTimeDisplay = string.Empty;
+
+    private DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Medium,
+        FullWidth = true,
+        CloseButton = true,
+        BackdropClick = false,
+        Position = DialogPosition.Center
+    };
+
+    private class SelectableTrack
+    {
+        public TrackInfo Info { get; set; } = null!;
+        public bool Selected { get; set; } = true;
+        public string DisplayName => $"{Info.Name} ({Info.Type.ToUpper()[0]}{Info.Index})";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _hardware = await HardwareService.DetectHardwareAsync();
+        _maxThreads = _hardware.CpuCoreCount;
+        _mltThreads = _hardware.CpuCoreCount;
+
+        // Load app settings for defaults
+        _appSettings = await SettingsService.LoadSettingsAsync();
+        _mltCrf = _appSettings.DefaultCrf;
+        _mltPreset = _appSettings.DefaultPreset;
+
+        // Initialize Real-ESRGAN settings from app settings
+        _esrganModelName = _appSettings.DefaultEsrganModelName;
+        _esrganScaleFactor = _appSettings.DefaultEsrganScaleFactor;
+        _esrganTileSize = _appSettings.DefaultEsrganTileSize;
+        _esrganUseFp16 = _appSettings.DefaultEsrganUseFp16;
+        _esrganTileMode = _appSettings.DefaultEsrganTileMode;
+
+        // Set default output folder to user's Videos directory
+        var videosFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
+        _outputPath = Path.Combine(videosFolder, "output.mp4");
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // If a source path is pre-populated and different from current, load it automatically
+        if (!string.IsNullOrEmpty(PrePopulatedSourcePath) && _sourcePath != PrePopulatedSourcePath)
+        {
+            _sourcePath = PrePopulatedSourcePath;
+
+            // Auto-detect source type from file extension
+            _isMltSource = _sourcePath.EndsWith(".mlt", StringComparison.OrdinalIgnoreCase);
+
+            // Auto-populate output path
+            UpdateOutputPath();
+
+            // Load tracks and markers if this is an MLT file
+            if (File.Exists(_sourcePath) && _isMltSource)
+            {
+                await LoadMltProjectDataAsync(_sourcePath);
+            }
+
+            UpdateEstimatedTime();
+        }
+
+        await base.OnParametersSetAsync();
+    }
+
+    private async Task BrowseSource()
+    {
+        // Allow both MLT and video files
+        var filters = new List<CheapAvaloniaBlazor.Models.FileFilter>
+        {
+            new() { Name = "Video Files", Extensions = new[] { "*.mp4", "*.mkv", "*.avi", "*.mov" } },
+            new() { Name = "MLT Project Files", Extensions = new[] { "*.mlt" } },
+            new() { Name = "All Files", Extensions = new[] { "*.*" } }
+        };
+
+        var options = new CheapAvaloniaBlazor.Models.FileDialogOptions
+        {
+            Title = "Select Source File",
+            Filters = filters
+        };
+
+        var selectedFile = await DesktopInterop.OpenFileDialogAsync(options);
+
+        if (!string.IsNullOrEmpty(selectedFile))
+        {
+            _sourcePath = selectedFile;
+
+            // Auto-detect source type from file extension
+            _isMltSource = _sourcePath.EndsWith(".mlt", StringComparison.OrdinalIgnoreCase);
+
+            // Auto-populate output path to Videos folder with source filename
+            UpdateOutputPath();
+
+            // Load tracks and markers if this is an MLT file
+            if (_isMltSource)
+            {
+                await LoadMltProjectDataAsync(_sourcePath);
+            }
+
+            UpdateEstimatedTime();
+        }
+    }
+
+    private async Task BrowseOutput()
+    {
+        var defaultFileName = !string.IsNullOrEmpty(_sourcePath)
+            ? Path.GetFileNameWithoutExtension(_sourcePath) + ".mp4"
+            : "output.mp4";
+
+        var filters = new List<CheapAvaloniaBlazor.Models.FileFilter>
+        {
+            new() { Name = "MP4 Files", Extensions = new[] { "*.mp4" } },
+            new() { Name = "MKV Files", Extensions = new[] { "*.mkv" } },
+            new() { Name = "All Files", Extensions = new[] { "*.*" } }
+        };
+
+        var options = new CheapAvaloniaBlazor.Models.FileDialogOptions
+        {
+            Title = "Save Output As",
+            DefaultFileName = defaultFileName,
+            Filters = filters
+        };
+
+        var selectedFile = await DesktopInterop.SaveFileDialogAsync(options);
+
+        if (!string.IsNullOrEmpty(selectedFile))
+        {
+            _outputPath = selectedFile;
+        }
+    }
+
+    private async Task LoadMltProjectDataAsync(string mltPath)
+    {
+        try
+        {
+            var project = await ShotcutService.LoadProjectAsync(mltPath);
+            if (project != null)
+            {
+                _loadedMltProject = project;
+
+                // Load tracks
+                var trackInfos = ShotcutService.GetTracks(project);
+
+                // Parse pre-selected tracks if provided
+                HashSet<int>? preSelectedVideoIndices = null;
+                if (!string.IsNullOrEmpty(PreSelectedVideoTracks))
+                {
+                    preSelectedVideoIndices = PreSelectedVideoTracks
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(int.Parse)
+                        .ToHashSet();
+                }
+
+                HashSet<int>? preSelectedAudioIndices = null;
+                if (!string.IsNullOrEmpty(PreSelectedAudioTracks))
+                {
+                    preSelectedAudioIndices = PreSelectedAudioTracks
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(int.Parse)
+                        .ToHashSet();
+                }
+
+                _tracks = trackInfos.Select(t => new SelectableTrack
+                {
+                    Info = t,
+                    // If pre-selection is provided, use that; otherwise select if not hidden
+                    Selected = t.Type == "video"
+                        ? (preSelectedVideoIndices?.Contains(t.Index) ?? !t.IsHidden)
+                        : (preSelectedAudioIndices?.Contains(t.Index) ?? !t.IsHidden)
+                }).ToList();
+
+                _videoTracks = _tracks.Where(t => t.Info.Type == "video").ToList();
+                _audioTracks = _tracks.Where(t => t.Info.Type == "audio").ToList();
+
+                // Load markers
+                _loadedMltProject.ParseMarkers();
+                _renderRangeDescription = _loadedMltProject.GetRenderRangeDescription();
+
+                // Calculate and display max end time
+                var maxEndTime = _loadedMltProject.GetTotalDurationTimecode();
+                if (!string.IsNullOrEmpty(maxEndTime))
+                    _maxEndTimeDisplay = maxEndTime;
+
+                // Initialize custom range with project markers
+                _customInPoint = _loadedMltProject.InMarker;
+                _customOutPoint = _loadedMltProject.OutMarker;
+
+                // Initialize timecode fields
+                if (_loadedMltProject.InMarker.HasValue)
+                    _inPointTimecode = _loadedMltProject.FramesToTimecode(_loadedMltProject.InMarker.Value);
+
+                if (_loadedMltProject.OutMarker.HasValue)
+                    _outPointTimecode = _loadedMltProject.FramesToTimecode(_loadedMltProject.OutMarker.Value);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading MLT project data: {ex.Message}");
+            _tracks = [];
+            _videoTracks = [];
+            _audioTracks = [];
+            _renderRangeDescription = string.Empty;
+            _maxEndTimeDisplay = string.Empty;
+        }
+    }
+
+    private void UpdateEstimatedTime()
+    {
+        if (_hardware == null || string.IsNullOrEmpty(_sourcePath))
+        {
+            _estimatedTime = string.Empty;
+            return;
+        }
+
+        // Estimate based on typical video duration (placeholder - would need actual video info)
+        var estimatedDuration = TimeSpan.FromMinutes(10); // Default estimate
+
+        if (_isMltSource && !_useRifeInterpolation && !_useRealEsrgan)
+        {
+            // MLT only render - can use NVENC or CPU based on codec setting
+            var useNvenc = _appSettings?.DefaultCodec?.Contains("nvenc") ?? false;
+            var renderTime = _hardware.EstimateFFmpegRenderTime(estimatedDuration, useNvenc);
+            var method = useNvenc ? "NVENC" : "CPU";
+            _estimatedTime = $"Estimated render time: ~{renderTime.TotalMinutes:F0} minutes ({method})";
+
+            if (useNvenc && _hardware.NvencAvailable)
+            {
+                var cpuTime = _hardware.EstimateFFmpegRenderTime(estimatedDuration, useNvenc: false);
+                _estimatedTime += $" - Saves ~{(cpuTime - renderTime).TotalMinutes:F0} minutes vs CPU!";
+            }
+        }
+        else
+        {
+            // Complex workflow (RIFE/ESRGAN) - show simple estimate
+            var renderTime = _hardware.EstimateFFmpegRenderTime(estimatedDuration, _hardware.NvencAvailable);
+            var stages = new List<string>();
+            if (_isMltSource) stages.Add("MLT render");
+            if (_useRifeInterpolation) stages.Add("RIFE interpolation");
+            if (_useRealEsrgan) stages.Add("AI upscaling");
+
+            var stagesText = stages.Any() ? string.Join(" + ", stages) : "render";
+            _estimatedTime = $"Estimated time ({stagesText}): ~{renderTime.TotalMinutes:F0} minutes";
+        }
+    }
+
+    private void ValidateAndConvertTimecodes()
+    {
+        // Reset errors
+        _inPointError = false;
+        _inPointErrorText = string.Empty;
+        _outPointError = false;
+        _outPointErrorText = string.Empty;
+
+        if (_loadedMltProject == null || !_useCustomRange)
+            return;
+
+        // Validate and convert in point
+        if (!string.IsNullOrWhiteSpace(_inPointTimecode))
+        {
+            try
+            {
+                _customInPoint = _loadedMltProject.TimecodeToFrames(_inPointTimecode);
+            }
+            catch (Exception ex)
+            {
+                _inPointError = true;
+                _inPointErrorText = $"Invalid timecode format: {ex.Message}";
+                _customInPoint = null;
+            }
+        }
+        else
+        {
+            _customInPoint = null;
+        }
+
+        // Validate and convert out point
+        if (!string.IsNullOrWhiteSpace(_outPointTimecode))
+        {
+            try
+            {
+                _customOutPoint = _loadedMltProject.TimecodeToFrames(_outPointTimecode);
+            }
+            catch (Exception ex)
+            {
+                _outPointError = true;
+                _outPointErrorText = $"Invalid timecode format: {ex.Message}";
+                _customOutPoint = null;
+            }
+        }
+        else
+        {
+            _customOutPoint = null;
+        }
+    }
+
+    private bool IsValid()
+    {
+        _validationError = string.Empty;
+
+        if (string.IsNullOrEmpty(_sourcePath))
+        {
+            _validationError = "Please select a source file";
+            return false;
+        }
+
+        // Don't check File.Exists here - it will be checked when actually adding the job
+        // This prevents validation errors while the file is being written
+
+        if (string.IsNullOrEmpty(_outputPath))
+        {
+            _validationError = "Please specify an output path";
+            return false;
+        }
+
+        // Validate source file type
+        var isMlt = _sourcePath.EndsWith(".mlt", StringComparison.OrdinalIgnoreCase);
+        var isVideo = _sourcePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
+                      _sourcePath.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase) ||
+                      _sourcePath.EndsWith(".avi", StringComparison.OrdinalIgnoreCase) ||
+                      _sourcePath.EndsWith(".mov", StringComparison.OrdinalIgnoreCase);
+
+        if (!isMlt && !isVideo)
+        {
+            _validationError = "Source file must be a video file (.mp4, .mkv, .avi, .mov) or MLT project (.mlt)";
+            return false;
+        }
+
+        // For video sources without any processing, show a warning
+        if (!_isMltSource && !_useRifeInterpolation && !_useRealCugan && !_useRealEsrgan && !_useNonAiUpscaling)
+        {
+            _validationError = "Please enable at least one processing option (RIFE, Real-CUGAN, Real-ESRGAN, or Non-AI Upscaling) for video sources";
+            return false;
+        }
+
+        // Validate that only one upscaling method is enabled at a time
+        var upscalingMethodsCount = new[] { _useRealCugan, _useRealEsrgan, _useNonAiUpscaling }.Count(x => x);
+        if (upscalingMethodsCount > 1)
+        {
+            _validationError = "Cannot enable multiple upscaling methods at the same time (choose one: Real-CUGAN, Real-ESRGAN, or Non-AI)";
+            return false;
+        }
+
+        // Validate timecodes if custom range is enabled (only for MLT files)
+        var isSourceMlt = _sourcePath.EndsWith(".mlt", StringComparison.OrdinalIgnoreCase);
+        if (_useCustomRange && isSourceMlt)
+        {
+            ValidateAndConvertTimecodes();
+
+            if (_inPointError || _outPointError)
+            {
+                _validationError = "Please fix timecode format errors";
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private async Task AddJob()
+    {
+        if (!IsValid())
+            return;
+
+        // Verify source file actually exists before proceeding
+        if (!File.Exists(_sourcePath))
+        {
+            _validationError = "Source file does not exist";
+            StateHasChanged();
+            return;
+        }
+
+        // Determine render type from source file
+        var renderType = _isMltSource ? RenderType.MltSource : RenderType.VideoSource;
+
+        // Determine multi-stage flags
+        var needsIntermediatePath = false;
+        var isTwoStageRender = false;
+        var isThreeStageRender = false;
+
+        // Determine upscaling method (Real-CUGAN, Real-ESRGAN, or non-AI)
+        var useAnyUpscaling = _useRealCugan || _useRealEsrgan || _useNonAiUpscaling;
+
+        if (_isMltSource && _useRifeInterpolation && useAnyUpscaling)
+        {
+            // MLT → UPSCALING → RIFE (three stages)
+            isThreeStageRender = true;
+            needsIntermediatePath = true;
+        }
+        else if (_isMltSource && (_useRifeInterpolation || useAnyUpscaling))
+        {
+            // MLT → RIFE or MLT → UPSCALING (two stages)
+            isTwoStageRender = true;
+            needsIntermediatePath = true;
+        }
+        else if (!_isMltSource && _useRifeInterpolation && useAnyUpscaling)
+        {
+            // Video → UPSCALING → RIFE (two stages)
+            isTwoStageRender = true;
+        }
+
+        var renderJob = new RenderJob
+        {
+            SourceVideoPath = _sourcePath,
+            OutputPath = _outputPath,
+            RenderType = renderType,
+            Status = RenderJobStatus.Pending,
+            UseRifeInterpolation = _useRifeInterpolation,
+            UseRealCugan = _useRealCugan,
+            UseRealEsrgan = _useRealEsrgan,
+            UseNonAiUpscaling = _useNonAiUpscaling,
+            NonAiUpscalingAlgorithm = _useNonAiUpscaling ? _nonAiAlgorithm : null,
+            NonAiUpscalingScaleFactor = _nonAiScaleFactor,
+            IsTwoStageRender = isTwoStageRender,
+            IsThreeStageRender = isThreeStageRender
+        };
+
+        // Set up intermediate rendering path if needed
+        if (needsIntermediatePath)
+        {
+            var tempFolder = Path.GetTempPath();
+            var tempFileName = $"{Path.GetFileNameWithoutExtension(_sourcePath)}_temp_{Guid.NewGuid()}.mp4";
+            renderJob.IntermediatePath = Path.Combine(tempFolder, tempFileName);
+        }
+
+        if (_isMltSource)
+        {
+            // Set up MLT render settings (first stage for MLT sources)
+            renderJob.MeltSettings = new MeltRenderSettings
+            {
+                ThreadCount = _mltThreads,
+                Preset = _mltPreset,
+                Crf = _mltCrf,
+                VideoCodec = _appSettings?.DefaultCodec ?? "libx264",
+                AudioCodec = "aac",
+                AudioBitrate = "128k",
+                UseHardwareAcceleration = false // Always false for MLT
+            };
+
+            // Store frame rate for timecode conversion
+            if (_loadedMltProject != null)
+            {
+                renderJob.FrameRate = _loadedMltProject.GetFrameRate();
+            }
+
+            // Set track selection
+            // IMPORTANT: Use actual tractor indices (Info.Index), not re-indexed positions
+            // The track Index from GetTracks() is the ACTUAL position in the tractor
+            // MeltRenderService.ApplyTrackSelectionAsync expects these tractor indices
+            var selectedVideoIndices = _videoTracks
+                .Where(t => t.Selected)
+                .Select(t => t.Info.Index.ToString())
+                .ToArray();
+
+            var selectedAudioIndices = _audioTracks
+                .Where(t => t.Selected)
+                .Select(t => t.Info.Index.ToString())
+                .ToArray();
+
+            renderJob.SelectedVideoTracks = selectedVideoIndices.Length > 0
+                ? string.Join(",", selectedVideoIndices)
+                : null;
+
+            renderJob.SelectedAudioTracks = selectedAudioIndices.Length > 0
+                ? string.Join(",", selectedAudioIndices)
+                : null;
+
+            // Set in/out points for partial rendering
+            if (_useCustomRange)
+            {
+                // Use custom range if specified
+                renderJob.InPoint = _customInPoint;
+                renderJob.OutPoint = _customOutPoint;
+            }
+            else if (_loadedMltProject != null)
+            {
+                // Use markers from project file
+                renderJob.InPoint = _loadedMltProject.InMarker;
+                renderJob.OutPoint = _loadedMltProject.OutMarker;
+            }
+
+        }
+
+        if (_useRifeInterpolation)
+        {
+            // Set up RIFE settings (for RIFE interpolation)
+            var ffmpegSettings = _rifeQuality switch
+            {
+                "draft" => await HardwareService.GetFastFFmpegSettingsAsync(_rifeTargetFps),
+                "high" => await HardwareService.GetHighQualityFFmpegSettingsAsync(_rifeTargetFps),
+                _ => await HardwareService.GetOptimalFFmpegSettingsAsync(_rifeTargetFps)
+            };
+
+            renderJob.FFmpegSettings = ffmpegSettings;
+            renderJob.RifeSettings = new RifeSettings
+            {
+                InterpolationMultiplier = _rifeMultiplier,
+                TargetFps = _rifeTargetFps,
+                QualityPreset = _rifeQuality
+            };
+        }
+
+        if (_useRealCugan)
+        {
+            var cuganOptions = new RealCuganOptions
+            {
+                Noise = _cuganNoise,
+                Scale = _cuganScale,
+                UseFp16 = _cuganUseFp16,
+                Backend = _cuganBackend,
+                NumStreams = _cuganNumStreams,
+                GpuId = _appSettings?.DefaultEsrganGpuId ?? 0
+            };
+
+            renderJob.RealCuganOptionsJson = System.Text.Json.JsonSerializer.Serialize(cuganOptions);
+        }
+
+        if (_useRealEsrgan)
+        {
+            var esrganOptions = new RealEsrganOptions
+            {
+                ModelName = _esrganModelName,
+                ScaleFactor = _esrganScaleFactor,
+                TileSize = _esrganTileSize,
+                TileMode = _esrganTileMode,
+                UseFp16 = _esrganUseFp16,
+                GpuId = _appSettings?.DefaultEsrganGpuId ?? 0,
+                TilePad = 10,
+                NumThreads = 1,
+                EnableDenoising = false,
+                DenoisingStrength = 0.5f,
+                TargetHeight = 0
+            };
+
+            renderJob.RealEsrganOptionsJson = System.Text.Json.JsonSerializer.Serialize(esrganOptions);
+        }
+
+        // Serialize render settings based on what's configured
+        if (_isMltSource && _useRifeInterpolation)
+        {
+            // MLT + RIFE: Store combined settings
+            var combinedSettings = new
+            {
+                MeltSettings = renderJob.MeltSettings,
+                FFmpegSettings = renderJob.FFmpegSettings,
+                RifeSettings = renderJob.RifeSettings
+            };
+            renderJob.RenderSettings = System.Text.Json.JsonSerializer.Serialize(combinedSettings);
+        }
+        else if (_isMltSource)
+        {
+            // MLT only: Store MLT settings
+            renderJob.RenderSettings = System.Text.Json.JsonSerializer.Serialize(renderJob.MeltSettings);
+        }
+        else if (_useRifeInterpolation)
+        {
+            // Video + RIFE: Store FFmpeg settings
+            renderJob.RenderSettings = System.Text.Json.JsonSerializer.Serialize(renderJob.FFmpegSettings);
+        }
+        else
+        {
+            // Video only (no processing): Empty settings
+            renderJob.RenderSettings = "{}";
+        }
+
+        await OnJobAdded.InvokeAsync(renderJob);
+        await CloseDialog();
+    }
+
+    private async Task Cancel()
+    {
+        await CloseDialog();
+    }
+
+    private async Task CloseDialog()
+    {
+        await IsVisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task OnDialogVisibleChanged(bool visible)
+    {
+        if (!visible)
+        {
+            await IsVisibleChanged.InvokeAsync(false);
+        }
+    }
+
+    private void OnProcessingOptionChanged()
+    {
+        UpdateOutputPath();
+        UpdateEstimatedTime();
+    }
+
+    private void UpdateOutputPath()
+    {
+        if (!string.IsNullOrEmpty(_sourcePath))
+        {
+            var videosFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
+            var fileNameWithoutExt = Path.GetFileNameWithoutExtension(_sourcePath);
+
+            // Determine suffix based on processing options
+            var anyUpscaling = _useRealCugan || _useRealEsrgan || _useNonAiUpscaling;
+            var suffix = (_useRifeInterpolation, anyUpscaling) switch
+            {
+                (true, true) => "_enhanced",     // RIFE + any upscaling
+                (true, false) => "_rife",        // RIFE only
+                (false, true) => "_upscaled",    // Any upscaling only
+                (false, false) => "_rendered"    // Neither (just MLT render if MLT source)
+            };
+
+            _outputPath = Path.Combine(videosFolder, $"{fileNameWithoutExt}{suffix}.mp4");
+        }
+    }
+}
