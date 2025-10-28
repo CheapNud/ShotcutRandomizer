@@ -171,6 +171,12 @@ Uses simulated annealing optimization to select the best combination of clips ba
 See [Installation Guide](docs/installation.md) for detailed troubleshooting.
 
 
-<img width="1508" height="1247" alt="Screenshot 2025-10-22 024423" src="https://github.com/user-attachments/assets/56b6ce72-ca23-4109-ad6f-05685f09a05f" />
+<img width="2560" height="1392" alt="Screenshot 2025-10-29 004043" src="https://github.com/user-attachments/assets/e397e070-b801-4944-902e-137f02600c12" />
+<img width="2560" height="1392" alt="Screenshot 2025-10-29 004105" src="https://github.com/user-attachments/assets/c36cfe3c-413a-456d-b577-4ccf2b8150bc" />
+<img width="2560" height="1392" alt="Screenshot 2025-10-29 004124" src="https://github.com/user-attachments/assets/7c8ff3b0-8e0f-46d6-9f8c-ca5db8d650dd" />
+<img width="2560" height="1392" alt="Screenshot 2025-10-29 004150" src="https://github.com/user-attachments/assets/63c67d59-df0c-4510-a30e-874a8499778b" />
+<img width="2560" height="1392" alt="Screenshot 2025-10-29 004205" src="https://github.com/user-attachments/assets/75979177-8e33-452c-889e-79f4fea33b93" />
+<img width="2560" height="1392" alt="Screenshot 2025-10-29 004224" src="https://github.com/user-attachments/assets/7ac35fc4-2871-428b-bc7b-a423ec965f83" />
+<img width="2560" height="1392" alt="Screenshot 2025-10-29 004228" src="https://github.com/user-attachments/assets/47572343-3178-470d-99d7-b414caf58c81" />
 
 ---
