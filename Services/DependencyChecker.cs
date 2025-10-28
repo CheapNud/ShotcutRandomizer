@@ -1,18 +1,22 @@
 using System.Diagnostics;
 using CheapShotcutRandomizer.Models;
+using CheapShotcutRandomizer.Services.VapourSynth;
 
 namespace CheapShotcutRandomizer.Services;
 
 /// <summary>
 /// Detects and validates external dependencies required by the application
 /// Integrates with existing ExecutableDetectionService and SvpDetectionService
+/// Reports on actually-used Python and VapourSynth (not just PATH detection)
 /// </summary>
 public class DependencyChecker(
     ExecutableDetectionService executableDetection,
-    SvpDetectionService svpDetection)
+    SvpDetectionService svpDetection,
+    IVapourSynthEnvironment vapourSynthEnvironment)
 {
     private readonly ExecutableDetectionService _executableDetection = executableDetection;
     private readonly SvpDetectionService _svpDetection = svpDetection;
+    private readonly IVapourSynthEnvironment _vapourSynthEnvironment = vapourSynthEnvironment;
 
     /// <summary>
     /// Check all dependencies and return comprehensive status
@@ -177,13 +181,15 @@ After installation, melt.exe will be in the Shotcut installation folder.",
 
     private async Task<DependencyInfo> CheckVapourSynthAsync()
     {
-        var (isInstalled, vspipePath, version) = await DetectVapourSynthAsync();
+        var isInstalled = await _vapourSynthEnvironment.IsVapourSynthAvailableAsync();
+        var vspipePath = _vapourSynthEnvironment.VsPipePath;
+        var version = _vapourSynthEnvironment.VapourSynthVersion;
 
         return new DependencyInfo
         {
             Type = DependencyType.VapourSynth,
             Name = "VapourSynth",
-            Description = "Video processing framework. Required for SVP RIFE integration (TensorRT acceleration).",
+            Description = "Video processing framework. Required for AI upscaling (Real-CUGAN, Real-ESRGAN) and SVP RIFE.",
             IsInstalled = isInstalled,
             IsRequired = false,
             InstalledVersion = version,
@@ -199,7 +205,7 @@ After installation, melt.exe will be in the Shotcut installation folder.",
 4. Verify installation: `vspipe --version`",
             DetectionMessage = isInstalled
                 ? $"VapourSynth found at: {vspipePath}"
-                : "VapourSynth not found. Required for SVP RIFE integration."
+                : "VapourSynth not found. Required for AI upscaling services."
         };
     }
 
@@ -274,17 +280,22 @@ Download from: https://github.com/FFMS/ffms2/releases",
 
     private async Task<DependencyInfo> CheckPythonAsync()
     {
-        var (isInstalled, pythonPath, version) = await DetectPythonAsync();
+        var isInstalled = await _vapourSynthEnvironment.IsPythonAvailableAsync();
+        var pythonPath = await _vapourSynthEnvironment.GetPythonFullPathAsync();
+        var version = _vapourSynthEnvironment.PythonVersion;
         var isCompatibleVersion = IsCompatiblePythonVersion(version);
+        var usingSvp = _vapourSynthEnvironment.IsUsingSvpPython;
+
+        var sourceInfo = usingSvp ? " (SVP's Python)" : " (System PATH)";
 
         return new DependencyInfo
         {
             Type = DependencyType.Python,
             Name = "Python 3.8-3.11",
-            Description = "Python interpreter. Required for standalone Practical-RIFE (alternative to SVP RIFE).",
+            Description = "Python interpreter. Required for AI upscaling services.",
             IsInstalled = isInstalled && isCompatibleVersion,
             IsRequired = false,
-            InstalledVersion = version,
+            InstalledVersion = version + sourceInfo,
             InstalledPath = pythonPath,
             DownloadUrl = "https://www.python.org/downloads/",
             ChocolateyPackage = "python",
@@ -468,45 +479,6 @@ choco install python --version=3.11.0
         return null;
     }
 
-    private async Task<(bool isInstalled, string? path, string? version)> DetectVapourSynthAsync()
-    {
-        try
-        {
-            var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "vspipe",
-                    Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            process.Start();
-            var output = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
-
-            if (process.ExitCode == 0 || !string.IsNullOrWhiteSpace(output))
-            {
-                var firstLine = output.Split('\n')[0];
-                var versionMatch = System.Text.RegularExpressions.Regex.Match(firstLine, @"VapourSynth Video Processing Library\s+Copyright.*\s+(R\d+)");
-                var version = versionMatch.Success ? versionMatch.Groups[1].Value : firstLine.Trim();
-
-                // Try to get full path
-                var wherePath = await GetExecutablePathAsync("vspipe");
-                return (true, wherePath ?? "vspipe", version);
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"VapourSynth detection failed: {ex.Message}");
-        }
-
-        return (false, null, null);
-    }
 
     private async Task<(bool isInstalled, string? pluginName, string? pluginPath)> DetectVapourSynthSourcePluginAsync()
     {
@@ -542,46 +514,6 @@ choco install python --version=3.11.0
         return (false, null, null);
     }
 
-    private async Task<(bool isInstalled, string? path, string? version)> DetectPythonAsync()
-    {
-        try
-        {
-            var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "python",
-                    Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            process.Start();
-            var output = await process.StandardOutput.ReadToEndAsync();
-            var errorOutput = await process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-
-            var versionOutput = !string.IsNullOrWhiteSpace(output) ? output : errorOutput;
-
-            if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(versionOutput))
-            {
-                var versionMatch = System.Text.RegularExpressions.Regex.Match(versionOutput, @"Python ([\d\.]+)");
-                var version = versionMatch.Success ? versionMatch.Groups[1].Value : versionOutput.Trim();
-
-                var wherePath = await GetExecutablePathAsync("python");
-                return (true, wherePath ?? "python", version);
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Python detection failed: {ex.Message}");
-        }
-
-        return (false, null, null);
-    }
 
     private bool IsCompatiblePythonVersion(string? version)
     {

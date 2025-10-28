@@ -1,0 +1,77 @@
+# Auto-labeling configuration for Pull Requests
+
+# Areas
+area/ui:
+  - 'Components/**/*'
+  - '**/*.razor'
+
+area/services:
+  - 'Services/**/*'
+
+area/models:
+  - 'Models/**/*'
+
+area/tests:
+  - 'CheapShotcutRandomizer.Tests/**/*'
+  - '**/*Tests.cs'
+
+area/ai-upscaling:
+  - 'Services/RealCUGAN/**/*'
+  - 'Services/RealESRGAN/**/*'
+
+area/frame-interpolation:
+  - 'Services/RIFE/**/*'
+
+area/video-processing:
+  - 'Services/FFmpegRenderService.cs'
+  - 'Services/MeltRenderService.cs'
+  - 'Services/VapourSynth/**/*'
+
+area/dependencies:
+  - 'Services/DependencyChecker.cs'
+  - 'Services/DependencyInstaller.cs'
+  - 'Services/ExecutableDetectionService.cs'
+
+# File types
+type/documentation:
+  - '**/*.md'
+  - 'docs/**/*'
+
+type/config:
+  - '**/*.yml'
+  - '**/*.yaml'
+  - '**/*.json'
+  - '**/*.config'
+
+type/build:
+  - '**/*.csproj'
+  - '**/*.sln'
+  - '.github/**/*'
+
+# Changes
+dependencies:
+  - '**/packages.lock.json'
+  - '**/*.csproj'
+
+size/XS:
+  - any: ['**/*']
+    max-changes: 10
+
+size/S:
+  - any: ['**/*']
+    min-changes: 11
+    max-changes: 50
+
+size/M:
+  - any: ['**/*']
+    min-changes: 51
+    max-changes: 200
+
+size/L:
+  - any: ['**/*']
+    min-changes: 201
+    max-changes: 500
+
+size/XL:
+  - any: ['**/*']
+    min-changes: 501

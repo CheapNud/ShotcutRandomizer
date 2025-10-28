@@ -255,7 +255,7 @@ public class MeltRenderService
         // Save modified project to a temporary file
         var tempPath = Path.Combine(
             Path.GetDirectoryName(mltFilePath) ?? Path.GetTempPath(),
-            $"temp_tracks_{Guid.NewGuid():N}.mlt"
+            $"temp_tracks_{Guid.NewGuid().ToString()[..8]}.mlt"
         );
 
         await _xmlService.SerializeAsync(tempPath, project);

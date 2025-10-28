@@ -1,6 +1,23 @@
-# Real-CUGAN Installation Guide
+# Real-CUGAN AI Upscaling
 
 Real-CUGAN is an AI upscaling solution optimized for anime and cartoon content. It is **10-13x faster** than Real-ESRGAN, processing at ~10-20 fps on an RTX 3080 compared to ~1 fps with Real-ESRGAN.
+
+## Quick Start: Use the Dependency Manager
+
+**The application includes a built-in Dependency Manager that automates Real-CUGAN setup:**
+
+1. Navigate to **Dependency Manager** in the application
+2. Check status of required dependencies:
+   - VapourSynth
+   - VapourSynth Source Plugin
+   - Python 3.8-3.11
+3. Click "Install Missing" or install dependencies individually
+4. The DependencyChecker service will verify installation and compatibility
+5. Use "Refresh Status" to verify after installation
+
+**The app automatically detects SVP's Python installation if available - no separate Python install needed in that case.**
+
+For advanced users who prefer manual installation, see the detailed instructions below.
 
 ## Performance Comparison
 
@@ -14,11 +31,18 @@ Real-CUGAN is an AI upscaling solution optimized for anime and cartoon content. 
 
 ## Prerequisites
 
+**Note:** All prerequisites can be installed and verified via the **Dependency Manager** in the application. Manual installation instructions are provided below for advanced users.
+
 ### 1. VapourSynth (Required)
 
 VapourSynth is the video processing framework that hosts the AI upscaling plugins.
 
-**Installation:**
+**Automated Installation:**
+- Navigate to Dependency Manager → Check "VapourSynth" status
+- Follow automated installation instructions
+- VapourSynthEnvironment service will automatically detect the installation
+
+**Manual Installation:**
 - Download from: https://github.com/vapoursynth/vapoursynth/releases
 - Install the latest R72+ release for Windows
 - Ensure `vspipe.exe` is accessible in your PATH or install directory
@@ -32,7 +56,13 @@ vspipe --version
 
 vs-mlrt requires Python to be installed and accessible.
 
-**Installation:**
+**Automated Detection:**
+- The DependencyChecker automatically detects:
+  - System Python installations (from PATH)
+  - SVP's bundled Python installation (if SVP is installed)
+- No manual Python installation needed if SVP is installed
+
+**Manual Installation:**
 - Download from: https://www.python.org/downloads/
 - **IMPORTANT:** Check "Add Python to PATH" during installation
 - Supported versions: Python 3.8, 3.9, 3.10, or 3.11
@@ -44,28 +74,26 @@ python --version
 
 ### 3. VapourSynth Source Plugin (Required)
 
-VapourSynth needs a source plugin to load video files. Choose one of the following:
+VapourSynth needs a source plugin to load video files.
 
-#### Option A: BestSource (Recommended)
-```bash
-# Download from GitHub releases
-# https://github.com/vapoursynth/bestsource/releases
-# Extract to VapourSynth plugins directory
-```
+**Automated Installation:**
+- Navigate to Dependency Manager → Check "VapourSynth Source Plugin" status
+- Follow automated installation instructions for BestSource (recommended)
+- DependencyChecker will verify plugin installation
 
-#### Option B: ffms2
-```bash
-# Download from GitHub releases
-# https://github.com/FFMS/ffms2/releases
-# Extract to VapourSynth plugins directory
-```
+**Manual Installation - Choose one:**
 
-#### Option C: L-SMASH Source
-```bash
-# Download from GitHub releases
-# https://github.com/HomeOfAviSynthPlusEvolution/L-SMASH-Works/releases
-# Extract to VapourSynth plugins directory
-```
+**Option A: BestSource (Recommended)**
+- Download from: https://github.com/vapoursynth/bestsource/releases
+- Extract to VapourSynth plugins directory
+
+**Option B: ffms2**
+- Download from: https://github.com/FFMS/ffms2/releases
+- Extract to VapourSynth plugins directory
+
+**Option C: L-SMASH Source**
+- Download from: https://github.com/HomeOfAviSynthPlusEvolution/L-SMASH-Works/releases
+- Extract to VapourSynth plugins directory
 
 **VapourSynth Plugins Directory:**
 - Windows: `C:\Program Files\VapourSynth\plugins64\` or `%APPDATA%\VapourSynth\plugins64\`
@@ -110,15 +138,16 @@ python -c "import tensorrt; print(tensorrt.__version__)"
 
 ### Step 3: Verify Installation
 
-**Test vs-mlrt import:**
+**Use the Dependency Manager (Recommended):**
+1. Navigate to **Dependency Manager** in the application
+2. Click **"Refresh Status"** to re-check all dependencies
+3. Verify that "VapourSynth", "Python 3.8-3.11", and "VapourSynth Source Plugin" show as installed
+4. The DependencyChecker will validate Python version compatibility and VapourSynth functionality
+
+**Manual verification via command line:**
 ```bash
 python -c "from vsmlrt import CUGAN, Backend; print('OK')"
 ```
-
-**Or use the in-app checker:**
-- Open Settings → Real-CUGAN Configuration
-- Check for green "vs-mlrt is installed and ready" message
-- Click "Refresh Detection" if needed
 
 ## Configuration
 
@@ -181,22 +210,43 @@ Real-CUGAN supports multiple denoising levels:
 
 ## Troubleshooting
 
+**First Step: Use the Dependency Manager**
+1. Navigate to **Dependency Manager** in the application
+2. Click **"Refresh Status"** to re-check all dependencies
+3. Review detailed status messages and error information
+4. Use **"Install Missing"** to automatically fix dependency issues
+
 ### "vs-mlrt not installed" Error
 
-**Solution:**
+**Via Dependency Manager:**
+- Check Python 3.8-3.11 status in Dependency Manager
+- Follow installation instructions if Python is missing or incompatible
+- The app will detect SVP's Python automatically if available
+
+**Manual Solution:**
 ```bash
 pip install --upgrade vsmlrt
 ```
 
 ### "No VapourSynth source plugin found" Error
 
-**Solution:**
+**Via Dependency Manager:**
+- Check "VapourSynth Source Plugin" status in Dependency Manager
+- Follow automated installation instructions
+- DependencyChecker will verify plugin installation after setup
+
+**Manual Solution:**
 - Install BestSource, ffms2, or L-SMASH Source (see Prerequisites)
 - Verify the plugin is in the VapourSynth plugins directory
 
 ### "vspipe.exe not found" Error
 
-**Solution:**
+**Via Dependency Manager:**
+- Check "VapourSynth" status in Dependency Manager
+- Follow installation instructions if VapourSynth is missing
+- Use "Refresh Status" after installation
+
+**Manual Solution:**
 - Reinstall VapourSynth
 - Ensure VapourSynth installation directory is in PATH
 - Manually add `C:\Program Files\VapourSynth\core\` to PATH
@@ -263,6 +313,6 @@ For issues specific to Real-CUGAN:
 - Real-CUGAN Issues: https://github.com/bilibili/ailab/issues
 
 For issues with this application:
-- Check Settings → Real-CUGAN Configuration for status indicators
+- **First step:** Check **Dependency Manager** for detailed status and error messages
+- Use "Refresh Status" button to re-check all dependencies
 - Enable Verbose Logging in Settings for detailed debug output
-- Use "Refresh Detection" button to re-check dependencies

@@ -1573,6 +1573,10 @@ except Exception as e:
         try
         {
             await SettingsService.SaveSettingsAsync(_settings);
+
+            // Refresh debug logger to pick up new VerboseLogging setting
+            CheapShotcutRandomizer.Services.Utilities.DebugLogger.RefreshSettings();
+
             Snackbar.Add("Settings saved successfully", Severity.Success);
             LogVerbose("Settings saved from UI");
         }

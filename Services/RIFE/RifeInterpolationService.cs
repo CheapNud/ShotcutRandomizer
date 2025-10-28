@@ -180,7 +180,7 @@ public class RifeInterpolationService
             }
 
             // Create a VapourSynth script for SVP RIFE
-            var tempScriptPath = Path.Combine(Path.GetTempPath(), $"svp_rife_{Guid.NewGuid()}.vpy");
+            var tempScriptPath = Path.Combine(Path.GetTempPath(), $"svp_rife_{Guid.NewGuid().ToString()[..8]}.vpy");
             var tempOutputPath = Path.ChangeExtension(tempScriptPath, ".y4m");
 
             try
@@ -583,8 +583,8 @@ public class RifeInterpolationService
         }
 
         // Create temporary video from frames
-        var tempVideoIn = Path.Combine(Path.GetTempPath(), $"rife_temp_{Guid.NewGuid()}.mp4");
-        var tempVideoOut = Path.Combine(Path.GetTempPath(), $"rife_out_{Guid.NewGuid()}.mp4");
+        var tempVideoIn = Path.Combine(Path.GetTempPath(), $"rife_temp_{Guid.NewGuid().ToString()[..8]}.mp4");
+        var tempVideoOut = Path.Combine(Path.GetTempPath(), $"rife_out_{Guid.NewGuid().ToString()[..8]}.mp4");
 
         try
         {

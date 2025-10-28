@@ -468,6 +468,12 @@
     [Parameter]
     public bool ShowRenderRange { get; set; } = true;
 
+    [Parameter]
+    public string? PreSelectedVideoTracks { get; set; }
+
+    [Parameter]
+    public string? PreSelectedAudioTracks { get; set; }
+
     private string _sourcePath = string.Empty;
     private string _outputPath = string.Empty;
     private bool _isMltSource = false; // Auto-detected from file extension
@@ -670,10 +676,33 @@
 
                 // Load tracks
                 var trackInfos = ShotcutService.GetTracks(project);
+
+                // Parse pre-selected tracks if provided
+                HashSet<int>? preSelectedVideoIndices = null;
+                if (!string.IsNullOrEmpty(PreSelectedVideoTracks))
+                {
+                    preSelectedVideoIndices = PreSelectedVideoTracks
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(int.Parse)
+                        .ToHashSet();
+                }
+
+                HashSet<int>? preSelectedAudioIndices = null;
+                if (!string.IsNullOrEmpty(PreSelectedAudioTracks))
+                {
+                    preSelectedAudioIndices = PreSelectedAudioTracks
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(int.Parse)
+                        .ToHashSet();
+                }
+
                 _tracks = trackInfos.Select(t => new SelectableTrack
                 {
                     Info = t,
-                    Selected = !t.IsHidden // Select by default if not hidden
+                    // If pre-selection is provided, use that; otherwise select if not hidden
+                    Selected = t.Type == "video"
+                        ? (preSelectedVideoIndices?.Contains(t.Index) ?? !t.IsHidden)
+                        : (preSelectedAudioIndices?.Contains(t.Index) ?? !t.IsHidden)
                 }).ToList();
 
                 _videoTracks = _tracks.Where(t => t.Info.Type == "video").ToList();
@@ -950,6 +979,9 @@
             }
 
             // Set track selection
+            // IMPORTANT: Use actual tractor indices (Info.Index), not re-indexed positions
+            // The track Index from GetTracks() is the ACTUAL position in the tractor
+            // MeltRenderService.ApplyTrackSelectionAsync expects these tractor indices
             var selectedVideoIndices = _videoTracks
                 .Where(t => t.Selected)
                 .Select(t => t.Info.Index.ToString())

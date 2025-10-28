@@ -102,4 +102,9 @@ public interface IRenderQueueService
     /// Get all failed jobs
     /// </summary>
     Task<List<RenderJob>> GetFailedJobsAsync();
+
+    /// <summary>
+    /// Clear all jobs from the queue (all statuses)
+    /// </summary>
+    Task<int> ClearAllJobsAsync();
 }

@@ -23,7 +23,7 @@ public class TemporaryFileManager : IDisposable
         _baseDirectory = customBaseDirectory ?? Path.Combine(
             Path.GetTempPath(),
             "ShotcutRandomizer",
-            Guid.NewGuid().ToString());
+            Guid.NewGuid().ToString()[..8]);
 
         Directory.CreateDirectory(_baseDirectory);
         Debug.WriteLine($"Created temporary directory: {_baseDirectory}");

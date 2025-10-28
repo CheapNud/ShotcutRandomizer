@@ -33,7 +33,7 @@
 
         <!-- Queue Status and Control -->
         <MudPaper Class="pa-4">
-            <MudGrid AlignItems="Center">
+            <MudGrid>
                 <MudItem xs="12" sm="6">
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                         @if (_isQueuePaused)
@@ -110,6 +110,13 @@
                            OnClick="@RefreshJobs"
                            Disabled="@_isLoadingJobs">
                     Refresh
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Error"
+                           StartIcon="@Icons.Material.Filled.DeleteSweep"
+                           OnClick="@HandleClearAllJobs"
+                           Disabled="@(_isLoadingJobs || _totalJobCount == 0)">
+                    Clear All Jobs
                 </MudButton>
                 <MudSpacer />
                 @if (_activeJobs.Count > 0)
@@ -324,6 +331,7 @@
     private bool _isLoadingJobs = true;
     private System.Threading.Timer? _refreshTimer;
     private DateTime _lastProgressUIUpdate = DateTime.MinValue;
+    private int _totalJobCount = 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -376,6 +384,7 @@
             _completedJobs = completedTask.Result.ToList();
             _failedJobs = failedTask.Result.ToList();
             _queueStats = statsTask.Result;
+            _totalJobCount = _activeJobs.Count + _completedJobs.Count + _failedJobs.Count;
         }
         catch (Exception ex)
         {
@@ -640,6 +649,43 @@
             _queueStats = await QueueService.GetQueueStatisticsAsync();
             StateHasChanged();
         });
+    }
+
+    private async Task HandleClearAllJobs()
+    {
+        // Show confirmation dialog
+        bool? dialogResult = await DialogService.ShowMessageBox(
+            "Clear All Jobs",
+            "Are you sure you want to clear all jobs from the queue? This will cancel any running jobs and delete all completed and failed jobs. This action cannot be undone.",
+            yesText: "Clear All",
+            cancelText: "Cancel");
+
+        if (dialogResult != true)
+        {
+            return;
+        }
+
+        try
+        {
+            _isLoadingJobs = true;
+            StateHasChanged();
+
+            // Clear all jobs
+            var clearedCount = await QueueService.ClearAllJobsAsync();
+
+            // Reload jobs to update UI
+            await LoadJobs();
+            _isLoadingJobs = false;
+            StateHasChanged();
+
+            Snackbar.Add($"Successfully cleared {clearedCount} job{(clearedCount != 1 ? "s" : "")} from the queue", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _isLoadingJobs = false;
+            StateHasChanged();
+            Snackbar.Add($"Error clearing jobs: {ex.Message}", Severity.Error);
+        }
     }
 
     public void Dispose()

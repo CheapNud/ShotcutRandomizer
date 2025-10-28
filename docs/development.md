@@ -6,6 +6,10 @@ Internal architecture and implementation details.
 
 ## Architecture Overview
 
+### Architecture Documentation
+
+- **[Graceful Shutdown Architecture](architecture/graceful-shutdown.md)** - Comprehensive guide to task cancellation and cleanup patterns
+
 ### Core Services
 
 1. **MeltRenderService** - MLT/Shotcut project rendering (CPU multi-threading)
@@ -109,13 +113,34 @@ var process = new Process
 
 ## Dependency Management
 
-Automated detection and installation of required tools.
+Automated detection, validation, and installation of required tools via the DependencyChecker service and Dependency Manager UI.
+
+### DependencyChecker Service
+
+The `DependencyChecker` service (`Services/DependencyChecker.cs`) provides comprehensive dependency detection and validation:
+
+- **Automated Detection**: Integrates with ExecutableDetectionService and SvpDetectionService
+- **VapourSynthEnvironment Integration**: Reports actually-used Python and VapourSynth (not just PATH detection)
+- **SVP Python Detection**: Automatically detects SVP's bundled Python installation
+- **Real-time Validation**: Version checking, compatibility verification, path validation
+- **Detailed Status**: Provides installation paths, versions, and error messages
+
+### Dependency Manager UI
+
+The Dependency Manager page (`Components/Pages/DependencyManager.razor`) provides a user-friendly interface:
+
+- **Status Dashboard**: Overall health percentage and summary
+- **Categorized View**: Required vs Optional dependencies
+- **One-click Installation**: "Install Missing" button for batch installation
+- **Individual Control**: Install or check each dependency separately
+- **Real-time Updates**: Progress tracking during installation
 
 ### Detection Strategy
 1. **Check PATH** - Standard system executables
 2. **Check Registry** - Installed applications
 3. **Check Common Locations** - Hardcoded paths for known apps
-4. **SVP Detection** - Special logic for SVP 4 installation
+4. **SVP Detection** - Special logic for SVP 4 installation and Python
+5. **VapourSynth Environment** - Detects VapourSynth and Python via VapourSynthEnvironment service
 
 ### Installation Strategies
 1. **Chocolatey** - Package manager (requires admin)
@@ -131,10 +156,10 @@ Automated detection and installation of required tools.
 - Melt (Shotcut rendering)
 
 **Optional:**
-- VapourSynth (RIFE + ESRGAN)
-- VapourSynth Source Plugin (video loading)
+- VapourSynth (RIFE + ESRGAN + Real-CUGAN)
+- VapourSynth Source Plugin (video loading: BestSource, L-SMASH, FFMS2)
 - SVP RIFE (TensorRT RIFE implementation)
-- Python 3.8-3.11 (for vsrealesrgan)
+- Python 3.8-3.11 (for vsrealesrgan and vsmlrt, auto-detected from SVP if available)
 - Practical-RIFE (standalone RIFE)
 
 ---
@@ -229,6 +254,10 @@ await retryPolicy.ExecuteAsync(async () =>
 
 ## Testing
 
+### Test Documentation
+
+Complete test documentation is available at [../CheapShotcutRandomizer.Tests/README.md](../CheapShotcutRandomizer.Tests/README.md)
+
 ### Unit Tests
 - BUnit for Blazor component testing
 - Moq for mocking services
@@ -281,6 +310,8 @@ Without throttling:
 
 ## File Locations
 
+**Note:** All file paths listed below are relative to the project root: `C:\Users\Brech\source\repos\ShotcutRandomizer`
+
 ### Services
 - `Services/MeltRenderService.cs` - MLT rendering
 - `Services/FFmpegRenderService.cs` - Video encoding
@@ -289,17 +320,26 @@ Without throttling:
 - `Services/Queue/RenderQueueService.cs` - Background queue
 - `Services/HardwareDetectionService.cs` - GPU/CPU detection
 - `Services/ExecutableDetectionService.cs` - Dependency detection
+- `Services/DependencyChecker.cs` - Comprehensive dependency validation and status reporting
+- `Services/DependencyInstaller.cs` - Automated dependency installation
+- `Services/VapourSynth/VapourSynthEnvironment.cs` - VapourSynth and Python environment detection
 
 ### UI Components
 - `Components/Pages/RenderQueue.razor` - Main queue UI
 - `Components/Shared/AddRenderJobDialog.razor` - Job creation dialog
 - `Components/Shared/RenderJobCard.razor` - Individual job card
 - `Components/Pages/Settings.razor` - Settings page
+- `Components/Pages/DependencyManager.razor` - Dependency management UI
+- `Components/Shared/DependencyListItem.razor` - Individual dependency status card
 
 ### Models
 - `Models/RenderJob.cs` - Job entity
 - `Models/RenderType.cs` - Source type enum
 - `Models/AppSettings.cs` - Application settings
+- `Models/DependencyInfo.cs` - Dependency metadata and status
+- `Models/DependencyType.cs` - Dependency type enumeration
+- `Models/DependencyStatus.cs` - Overall dependency health status
+- `Models/InstallationResult.cs` - Installation operation result
 
 ---
 

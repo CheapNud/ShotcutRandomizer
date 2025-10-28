@@ -363,3 +363,8 @@ MigrationBackup/
 FodyWeavers.xsd
 /.claude/settings.local.json
 /nul
+
+# SQLite database files (runtime data, should not be committed)
+*.db
+*.db-shm
+*.db-wal

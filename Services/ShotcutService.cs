@@ -63,7 +63,7 @@ public class ShotcutService(IXmlService xmlService)
         {
             var newpath = Path.Combine(
                 Path.GetDirectoryName(originalPath) ?? string.Empty,
-                $"{Path.GetFileNameWithoutExtension(originalPath)}.Random{Guid.NewGuid().ToString()[..4]}{Path.GetExtension(originalPath)}"
+                $"{Path.GetFileNameWithoutExtension(originalPath)}.Random{Guid.NewGuid().ToString()[..8]}{Path.GetExtension(originalPath)}"
             );
 
             await _xmlService.SerializeAsync(newpath, project);
@@ -166,7 +166,7 @@ public class ShotcutService(IXmlService xmlService)
         return result;
     }
 
-    public Playlist GenerateRandomPlaylist(
+    public (Playlist Playlist, int TrackIndex) GenerateRandomPlaylist(
         Mlt project,
         List<(int PlaylistIndex, int TargetDurationSeconds)> sourcePlaylists,
         double durationWeight,
@@ -215,10 +215,41 @@ public class ShotcutService(IXmlService xmlService)
         RemoveBlanks(newPlaylist);
 
         project.Playlist.Add(newPlaylist);
-        project.Tractor.First(x => x.Property.Any(y => y.Name == "shotcut"))
-            .Track.Add(new Track { Producer = newPlaylist.Id });
 
-        return newPlaylist;
+        var mainTractor = project.Tractor.First(x => x.Property.Any(y => y.Name == "shotcut"));
+        var newTrackIndex = mainTractor.Track.Count; // Index where the new track will be added
+        mainTractor.Track.Add(new Track { Producer = newPlaylist.Id });
+
+        return (newPlaylist, newTrackIndex);
+    }
+
+    /// <summary>
+    /// Get the track index for a given playlist ID
+    /// Returns the tractor track index that references the playlist, or -1 if not found
+    /// </summary>
+    public int GetTrackIndexForPlaylist(Mlt project, int playlistIndex)
+    {
+        if (project == null)
+            throw new ArgumentNullException(nameof(project));
+
+        if (playlistIndex < 0 || playlistIndex >= project.Playlist.Count)
+            return -1;
+
+        var playlistId = project.Playlist[playlistIndex].Id;
+
+        var mainTractor = project.Tractor?.FirstOrDefault(t =>
+            t.Property?.Any(p => p.Name == "shotcut") ?? false);
+
+        if (mainTractor?.Track == null)
+            return -1;
+
+        for (int i = 0; i < mainTractor.Track.Count; i++)
+        {
+            if (mainTractor.Track[i].Producer == playlistId)
+                return i;
+        }
+
+        return -1;
     }
 
     /// <summary>

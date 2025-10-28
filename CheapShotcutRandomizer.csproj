@@ -9,6 +9,14 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
 
+    <!-- Platform Support - Windows Only -->
+    <!-- Reasons: WMI (System.Management), TensorRT, SVP 4 Pro, NVENC -->
+    <RuntimeIdentifiers>win-x64;win-x86;win-arm64</RuntimeIdentifiers>
+
+    <!-- Suppress CA1416: This is a Windows-only application by design -->
+    <!-- Dependencies: System.Management (WMI), TensorRT, SVP 4 Pro, WindowsIdentity -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+
     <!-- Package Information -->
     <AssemblyTitle>Cheap Shotcut Randomizer</AssemblyTitle>
     <Product>Cheap Shotcut Randomizer</Product>

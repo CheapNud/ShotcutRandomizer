@@ -1,12 +1,15 @@
 using System.Diagnostics;
 using System.Management;
+using System.Runtime.Versioning;
 
 namespace CheapShotcutRandomizer.Services;
 
 /// <summary>
 /// Detects hardware capabilities and provides optimal rendering settings
 /// Automatically configures for RTX 3080 + Ryzen 9 5900X setup
+/// Note: Uses Windows Management Instrumentation (WMI) - Windows-only
 /// </summary>
+[SupportedOSPlatform("windows")]
 public class HardwareDetectionService(SvpDetectionService svpDetection)
 {
     private HardwareCapabilities? _cachedCapabilities;

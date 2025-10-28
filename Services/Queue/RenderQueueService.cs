@@ -260,6 +260,36 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
         return await repository.GetActiveJobsAsync();
     }
 
+    public async Task<int> ClearAllJobsAsync()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<IRenderJobRepository>();
+
+        // Cancel all running jobs first
+        List<Guid> runningJobIds;
+        lock (_runningJobsLock)
+        {
+            runningJobIds = _runningJobs.Keys.ToList();
+        }
+
+        foreach (var jobId in runningJobIds)
+        {
+            await CancelJobAsync(jobId);
+        }
+
+        // Get all jobs and delete them
+        var allJobs = await repository.GetAllAsync();
+        var jobCount = allJobs.Count;
+
+        foreach (var renderJob in allJobs)
+        {
+            await repository.DeleteAsync(renderJob.JobId);
+        }
+
+        Debug.WriteLine($"Cleared {jobCount} jobs from queue");
+        return jobCount;
+    }
+
     public async Task<bool> CancelJobAsync(Guid jobId)
     {
         using var scope = _serviceProvider.CreateScope();
@@ -859,7 +889,7 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
         });
 
         // Execute upscaling
-        var esrganService = new Services.RealESRGAN.RealEsrganService();
+        var esrganService = scope.ServiceProvider.GetRequiredService<Services.RealESRGAN.RealEsrganService>();
 
         return await esrganService.UpscaleVideoAsync(
             renderJob.SourceVideoPath,
@@ -896,7 +926,7 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
         }
 
         // Create temporary output path for upscaled result
-        var tempOutput = Path.Combine(Path.GetTempPath(), $"esrgan_temp_{Guid.NewGuid()}.mp4");
+        var tempOutput = Path.Combine(Path.GetTempPath(), $"esrgan_temp_{Guid.NewGuid().ToString()[..8]}.mp4");
 
         // Deserialize Real-ESRGAN options
         RealEsrganOptions? esrganOptions = null;
@@ -959,7 +989,7 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
         });
 
         // Execute upscaling
-        var esrganService = new Services.RealESRGAN.RealEsrganService();
+        var esrganService = scope.ServiceProvider.GetRequiredService<Services.RealESRGAN.RealEsrganService>();
 
         var success = await esrganService.UpscaleVideoAsync(
             inputPath,
@@ -1036,7 +1066,7 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
         }
 
         // Create temporary output path for upscaled result
-        var tempOutput = Path.Combine(Path.GetTempPath(), $"nonai_upscale_temp_{Guid.NewGuid()}.mp4");
+        var tempOutput = Path.Combine(Path.GetTempPath(), $"nonai_upscale_temp_{Guid.NewGuid().ToString()[..8]}.mp4");
 
         // Get algorithm and scale factor
         var algorithm = renderJob.NonAiUpscalingAlgorithm ?? "lanczos";
@@ -1153,7 +1183,7 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
         }
 
         // Create temporary output path for upscaled result
-        var tempOutput = Path.Combine(Path.GetTempPath(), $"realcugan_temp_{Guid.NewGuid()}.mp4");
+        var tempOutput = Path.Combine(Path.GetTempPath(), $"realcugan_temp_{Guid.NewGuid().ToString()[..8]}.mp4");
 
         // Deserialize Real-CUGAN options
         RealCuganOptions? cuganOptions = null;
@@ -1216,7 +1246,7 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
         });
 
         // Execute upscaling
-        var cuganService = new Services.RealCUGAN.RealCuganService();
+        var cuganService = scope.ServiceProvider.GetRequiredService<Services.RealCUGAN.RealCuganService>();
 
         var success = await cuganService.UpscaleVideoAsync(
             inputPath,
@@ -1816,7 +1846,7 @@ public class RenderQueueService : BackgroundService, IRenderQueueService
 
             esrganOptions ??= RealEsrganOptions.GetRecommendedSettings(720);
 
-            var esrganService = new Services.RealESRGAN.RealEsrganService();
+            var esrganService = scope.ServiceProvider.GetRequiredService<Services.RealESRGAN.RealEsrganService>();
 
             // Stage 3 progress: 66-100%
             var lastEsrganProgressUpdate = DateTime.UtcNow;

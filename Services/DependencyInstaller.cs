@@ -415,6 +415,7 @@ public class DependencyInstaller
 
     // Helper methods
 
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private bool IsAdministrator()
     {
         try

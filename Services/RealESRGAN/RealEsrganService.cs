@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using CheapShotcutRandomizer.Models;
 using CheapShotcutRandomizer.Services.Utilities;
+using CheapShotcutRandomizer.Services.VapourSynth;
 
 namespace CheapShotcutRandomizer.Services.RealESRGAN;
 
@@ -13,60 +13,12 @@ namespace CheapShotcutRandomizer.Services.RealESRGAN;
 /// </summary>
 public class RealEsrganService
 {
-    private readonly string _pythonPath;
+    private readonly IVapourSynthEnvironment _environment;
 
-    public RealEsrganService(string pythonPath = "")
+    public RealEsrganService(IVapourSynthEnvironment environment)
     {
-        // Auto-detect Python path if not specified
-        if (string.IsNullOrEmpty(pythonPath))
-        {
-            // On Windows, try "python" first, then "python3"
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                _pythonPath = IsPythonAvailable("python") ? "python" :
-                              IsPythonAvailable("python3") ? "python3" : "python";
-            }
-            else
-            {
-                _pythonPath = "python3";
-            }
-        }
-        else
-        {
-            _pythonPath = pythonPath;
-        }
-
-        Debug.WriteLine($"RealEsrganService initialized with Python: {_pythonPath}");
-    }
-
-    /// <summary>
-    /// Check if Python is available in PATH
-    /// </summary>
-    private bool IsPythonAvailable(string pythonCommand)
-    {
-        try
-        {
-            var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = pythonCommand,
-                    Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            process.Start();
-            process.WaitForExit(2000);
-            return process.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
+        _environment = environment;
+        Debug.WriteLine($"RealEsrganService initialized with Python: {_environment.PythonPath}");
     }
 
     /// <summary>
@@ -77,28 +29,12 @@ public class RealEsrganService
         try
         {
             // Check if Python can import vsrealesrgan
-            var testProcess = new ProcessStartInfo
-            {
-                FileName = _pythonPath,
-                Arguments = "-c \"import vsrealesrgan; print('OK')\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            var (exitCode, output, errorText) = await _environment.RunPythonCommandAsync(
+                "-c \"import vsrealesrgan; print('OK')\"",
+                timeoutMs: 5000
+            );
 
-            using var process = Process.Start(testProcess);
-            if (process == null)
-            {
-                Debug.WriteLine("Failed to start Python process for vsrealesrgan validation");
-                return false;
-            }
-
-            var output = await process.StandardOutput.ReadToEndAsync();
-            var errorText = await process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-
-            if (process.ExitCode != 0 || !output.Contains("OK"))
+            if (exitCode != 0 || !output.Contains("OK"))
             {
                 Debug.WriteLine($"vsrealesrgan validation failed: {errorText}");
                 return false;
@@ -137,14 +73,14 @@ public class RealEsrganService
         Debug.WriteLine($"Model: {options.ModelName}, Scale: {options.ScaleFactor}x, Tile: {options.TileSize}px");
 
         // Check for vspipe (VapourSynth's command-line tool)
-        var vspipePath = FindVsPipe();
+        var vspipePath = _environment.VsPipePath;
         if (string.IsNullOrEmpty(vspipePath))
         {
             throw new FileNotFoundException("vspipe.exe not found. Please install VapourSynth.");
         }
 
         // Create VapourSynth script for Real-ESRGAN
-        var tempScriptPath = Path.Combine(Path.GetTempPath(), $"realesrgan_{Guid.NewGuid()}.vpy");
+        var tempScriptPath = Path.Combine(Path.GetTempPath(), $"realesrgan_{Guid.NewGuid().ToString()[..8]}.vpy");
 
         try
         {
@@ -355,66 +291,6 @@ public class RealEsrganService
     }
 
     /// <summary>
-    /// Find vspipe executable
-    /// </summary>
-    private string? FindVsPipe()
-    {
-        // Check common VapourSynth installation paths
-        var possiblePaths = new[]
-        {
-            @"C:\Program Files\VapourSynth\core\vspipe.exe",
-            @"C:\Program Files (x86)\VapourSynth\core\vspipe.exe",
-            @"C:\Python311\Scripts\vspipe.exe",
-            @"C:\Python310\Scripts\vspipe.exe",
-            @"C:\Python39\Scripts\vspipe.exe",
-            @"C:\Python38\Scripts\vspipe.exe",
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"VapourSynth\core\vspipe.exe"),
-        };
-
-        foreach (var path in possiblePaths)
-        {
-            if (File.Exists(path))
-            {
-                Debug.WriteLine($"Found vspipe at: {path}");
-                return path;
-            }
-        }
-
-        // Try to find in PATH
-        try
-        {
-            var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "vspipe",
-                    Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            process.Start();
-            process.WaitForExit(2000);
-
-            if (process.ExitCode == 0)
-            {
-                Debug.WriteLine("Found vspipe in PATH");
-                return "vspipe";
-            }
-        }
-        catch
-        {
-            // vspipe not in PATH
-        }
-
-        Debug.WriteLine("vspipe not found");
-        return null;
-    }
-
-    /// <summary>
     /// Generate VapourSynth script for Real-ESRGAN upscaling
     /// </summary>
     private string GenerateRealEsrganScript(string inputVideoPath, RealEsrganOptions options)
@@ -519,23 +395,7 @@ clip.set_output()
         try
         {
             // Check if Python is available
-            var pythonCheck = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = _pythonPath,
-                    Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            pythonCheck.Start();
-            await pythonCheck.WaitForExitAsync();
-
-            if (pythonCheck.ExitCode != 0)
+            if (!await _environment.IsPythonAvailableAsync())
             {
                 Debug.WriteLine("Python not found or not working");
                 return false;

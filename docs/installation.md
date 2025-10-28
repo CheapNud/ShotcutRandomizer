@@ -4,179 +4,171 @@ Complete setup instructions for all AI processing features.
 
 ---
 
-## Table of Contents
-- [RIFE Frame Interpolation](#rife-frame-interpolation)
-- [Real-ESRGAN AI Upscaling](#real-esrgan-ai-upscaling)
-- [VapourSynth Setup](#vapoursynth-setup)
-- [Troubleshooting](#troubleshooting)
+## Quick Start: Automated Dependency Manager
+
+**The application includes a built-in Dependency Manager that automates installation and verification of all required dependencies.**
+
+### Using the Dependency Manager (Recommended)
+
+1. **Launch the Application**
+2. **Navigate to Dependency Manager** (from the main menu)
+3. **Review Dependency Status** - The manager automatically detects installed dependencies
+4. **Install Missing Dependencies** - Click "Install Missing" or install individual dependencies
+5. **Verify Installation** - Click "Refresh Status" to re-check after installation
+
+The Dependency Manager handles:
+- Automatic detection of installed tools (FFmpeg, melt, VapourSynth)
+- Automatic detection of SVP Python and VapourSynth installations
+- Guided installation with multiple strategies (Chocolatey, portable, installer)
+- Real-time verification of dependency versions and compatibility
+- Integration with existing installations (detects Shotcut, SVP, etc.)
+
+**For advanced users or manual installation, see the detailed instructions below.**
 
 ---
 
-## RIFE Frame Interpolation
+## Table of Contents
+- [Quick Start: Automated Dependency Manager](#quick-start-automated-dependency-manager)
+- [Feature Overview](#feature-overview)
+  - [RIFE Frame Interpolation](#rife-frame-interpolation)
+  - [Real-CUGAN AI Upscaling](#real-cugan-ai-upscaling)
+  - [Real-ESRGAN AI Upscaling](#real-esrgan-ai-upscaling)
+  - [Non-AI Upscaling](#non-ai-upscaling)
+  - [VapourSynth Setup](#vapoursynth-setup)
+- [Troubleshooting](#troubleshooting)
+- [Hardware Requirements](#hardware-requirements)
+
+---
+
+## Feature Overview
+
+This section provides brief overviews of each feature. For complete documentation, see the linked feature pages.
+
+### RIFE Frame Interpolation
 
 AI-powered frame interpolation to increase video frame rates (30fps → 60fps, etc.).
 
-### Recommended: SVP's RIFE (TensorRT Accelerated)
-
-**Requirements:**
-- NVIDIA GPU (RTX 20 series or newer)
-- SVP 4 Pro
-- VapourSynth
-
-**Installation:**
-
-1. **Install SVP 4 Pro**
-   - Download: https://www.svp-team.com/get/
-   - Select "RIFE AI engine" during installation
-   - Installs to: `C:\Program Files (x86)\SVP 4\rife\`
-
-2. **Install VapourSynth** (see [VapourSynth Setup](#vapoursynth-setup) below)
-
-3. **Configure in App**
-   - Settings → RIFE Folder Path
-   - Browse to: `C:\Program Files (x86)\SVP 4\rife`
+**Quick Start:**
+- The Dependency Manager can automatically detect SVP installations and guide you through setup
+- SVP 4 Pro includes TensorRT-accelerated RIFE (RTX 20 series or newer required)
+- Alternative: Standalone Practical-RIFE with Python 3.8-3.11
 
 **Available Models:**
-- 4.6 (balanced, default)
-- 4.14-4.26 (various improvements)
-- 4.22-lite, 4.25-lite (faster)
-- UHD (for 4K+)
-- Anime (optimized for animation)
+- 4.6 to 4.26 (various quality/speed tradeoffs)
+- Lite variants (4.22-lite, 4.25-lite) for faster processing
+- UHD and Anime-specific models
 
-### Alternative: Practical-RIFE (Standalone Python)
+**For complete RIFE documentation, see [RIFE Frame Interpolation](features/rife.md)**
 
-**Requirements:**
-- Python 3.8-3.11
-- NVIDIA GPU with CUDA
-- 4GB+ VRAM
+### Real-CUGAN AI Upscaling
 
-**Installation:**
-```cmd
-# Install Python 3.11 (check "Add to PATH")
-# Then:
-cd C:\
-git clone https://github.com/hzwer/Practical-RIFE.git
-cd Practical-RIFE
+AI-powered video upscaling optimized for anime and cartoon content (720p → 1440p/4K). **10-13x faster** than Real-ESRGAN.
 
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-pip install opencv-python numpy
-```
+**Quick Start:**
+- Requires VapourSynth, Python 3.8-3.11, and vsmlrt
+- Dependency Manager automates installation and verification
+- Works on CPU but GPU highly recommended (TensorRT/CUDA)
 
-**Test:**
-```cmd
-python inference_video.py --video input.mp4 --multi 2
-```
+**Performance (RTX 3080):**
+- TensorRT: 15-20 fps (3-4 min per min of video)
+- CUDA: 10-15 fps (4-6 min per min of video)
+- CPU OpenVINO: 2-3 fps (20-30 min per min of video)
 
----
+**Backend Options:**
+- TensorRT (fastest, RTX 20+ series)
+- CUDA (fast, any NVIDIA GPU)
+- CPU OpenVINO (fallback for any CPU)
 
-## Real-ESRGAN AI Upscaling
+**For complete Real-CUGAN documentation, see [Real-CUGAN AI Upscaling](features/real-cugan.md)**
 
-AI-powered video upscaling (720p → 1440p/4K).
+### Real-ESRGAN AI Upscaling
 
-### Requirements
-- **VapourSynth**
-- **Python 3.8-3.11**
-- **NVIDIA GPU** (RTX 20 series or newer)
-- **6GB+ VRAM** (4GB minimum with tiling)
+AI-powered video upscaling for photorealistic content (720p → 1440p/4K).
 
-### Installation Steps
+**Quick Start:**
+- Requires VapourSynth, Python 3.8-3.11, and vsrealesrgan
+- Dependency Manager automates installation and verification
+- Requires NVIDIA GPU (RTX 20 series or newer) with 6GB+ VRAM
 
-1. **Install VapourSynth** (see [VapourSynth Setup](#vapoursynth-setup) below)
+**Available Models:**
+- RealESRGAN_x4plus (general content, default)
+- RealESRGAN_x4plus_anime_6B (anime/animation)
+- RealESRGAN_x2plus (2x upscaling, fastest)
+- realesr-general-x4v3 (includes denoising)
+- RealESRGAN_AnimeVideo-v3 (temporal consistency)
 
-2. **Install Python 3.11**
-   - Download: https://www.python.org/downloads/
-   - Check "Add Python to PATH" during installation
+**Performance Settings:**
+- Tile Mode: 256px/512px/768px (lower = less VRAM, slower)
+- FP16 Mode: 50% faster, half VRAM usage (recommended)
+- TensorRT: Optional 2-3x speedup
 
-3. **Install vsrealesrgan**
-   ```cmd
-   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-   pip install vsrealesrgan
-   ```
+**For complete Real-ESRGAN documentation, see [Real-ESRGAN AI Upscaling](features/real-esrgan.md)**
 
-4. **Install TensorRT (Optional, 2-3x faster)**
-   ```cmd
-   pip install torch_tensorrt tensorrt-cu12
-   ```
+### Non-AI Upscaling
 
-5. **Verify**
-   ```cmd
-   python -c "import vsrealesrgan; print('vsrealesrgan OK')"
-   ```
+Ultra-fast upscaling alternatives using traditional algorithms. **100x faster** than AI upscaling.
 
-### Available Models
+**Quick Start:**
+- Only requires FFmpeg (automatically detected or installable via Dependency Manager)
+- No additional setup required - built into the app
 
-| Model | Scale | Best For | Speed |
-|-------|-------|----------|-------|
-| RealESRGAN_x4plus | 4x | General content (default) | Fast |
-| RealESRGAN_x4plus_anime_6B | 4x | Anime/animation | Medium |
-| RealESRGAN_x2plus | 2x | Moderate upscaling | Fastest |
-| realesr-general-x4v3 | 4x | General + denoising | Medium |
-| RealESRGAN_AnimeVideo-v3 | 4x | Anime with temporal consistency | Slow |
+**Available Algorithms:**
+- **Lanczos**: General content, photos, smooth gradients (~10x real-time)
+- **xBR**: Anime, cartoons, sharp edges (~5x real-time)
+- **HQx**: Pixel art, sprites, retro game footage (~5x real-time)
 
-Models auto-download on first use (stored in `~/.cache/torch/hub/`).
+**Performance Comparison (1-minute 1080p video, RTX 3080):**
+- Real-ESRGAN: ~30 minutes
+- Real-CUGAN: ~3-6 minutes (5-10x faster)
+- Lanczos: ~6-12 seconds (150-300x faster)
+- xBR/HQx: ~12-18 seconds (100-150x faster)
 
-### Performance Settings
+**When to Use:**
+- Quick previews and iterations
+- Batch processing where speed is critical
+- Systems without high-end GPUs
 
-**Tile Mode:**
-- 256px: Low VRAM (2-4GB), slowest
-- 512px: Moderate VRAM (6-8GB), balanced ✅
-- 768px: High VRAM (10-12GB), fastest
+**For complete Non-AI Upscaling documentation, see [Non-AI Upscaling](features/non-ai-upscaling.md)**
 
-**FP16 Mode (Recommended):**
-- 50% faster, half VRAM usage
-- Minimal quality loss
-- All RTX GPUs support it
+### VapourSynth Setup
 
----
+Video processing framework required for RIFE, Real-CUGAN, and Real-ESRGAN processing.
 
-## VapourSynth Setup
+**Quick Start:**
+- Dependency Manager automates VapourSynth and source plugin installation
+- Restart computer after installation (adds vspipe to PATH)
+- VapourSynthEnvironment service automatically detects the installation
 
-Required for both RIFE and Real-ESRGAN processing.
+**Source Plugin Options:**
+- **BestSource** (recommended)
+- **L-SMASH Source** (alternative)
+- **FFMS2** (another alternative)
 
-### Install VapourSynth
-
-1. **Download & Install**
-   - Download: https://github.com/vapoursynth/vapoursynth/releases
-   - Run installer (adds `vspipe` to PATH)
-   - Restart computer
-
-2. **Verify**
-   ```cmd
-   vspipe --version
-   ```
-
-### Install Source Plugin
-
-VapourSynth needs a plugin to load videos. Choose one:
-
-#### BestSource (Recommended)
-- Download: https://github.com/vapoursynth/bestsource/releases
-- Extract `BestSource.dll` to:
-  - `C:\Program Files\VapourSynth\plugins\`
-  - OR `%APPDATA%\VapourSynth\plugins\`
-
-#### L-SMASH Source (Alternative)
-- Download: https://github.com/AkarinVS/L-SMASH-Works/releases
-- Extract `LSMASHSource.dll` to `C:\Program Files\VapourSynth\plugins\`
-
-#### FFMS2 (Another Alternative)
-- Download: https://github.com/FFMS/ffms2/releases
-- Extract `FFMS2.dll` to `C:\Program Files\VapourSynth\plugins\`
+**For complete VapourSynth documentation, see [VapourSynth Setup](features/vapoursynth.md)**
 
 ---
 
 ## Troubleshooting
 
+**First Step: Use the Dependency Manager**
+- Navigate to **Dependency Manager** in the application
+- Click "Refresh Status" to re-check all dependencies
+- Review the status and error messages for each dependency
+- The DependencyChecker service provides detailed diagnostic information
+
 ### VapourSynth Errors
 
 **"No attribute with the name bs/ffms2/lsmas exists"**
-- Install a source plugin (BestSource recommended)
+- Check Dependency Manager for "VapourSynth Source Plugin" status
+- Install a source plugin (BestSource recommended) via Dependency Manager or manually
 - Restart application after installing
 - Check plugin is in correct folder
 
 **"vspipe not found"**
+- Check Dependency Manager for "VapourSynth" status
 - Restart computer after VapourSynth installation
 - Verify: `where vspipe` shows correct path
+- Use Dependency Manager's "Refresh Status" to verify detection
 
 ### CUDA/GPU Errors
 
