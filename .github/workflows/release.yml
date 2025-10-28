@@ -26,6 +26,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
+        path: repo
         fetch-depth: 0
         submodules: recursive
 
@@ -33,7 +34,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: CheapNud/CheapHelpers
-        path: ../CheapHelpers
+        path: CheapHelpers
         token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Setup .NET 10.0
@@ -55,9 +56,11 @@ jobs:
         echo "Version: $version"
 
     - name: Restore dependencies
+      working-directory: repo
       run: dotnet restore CheapShotcutRandomizer.sln
 
     - name: Build Release (Self-Contained)
+      working-directory: repo
       run: |
         dotnet publish CheapShotcutRandomizer.csproj `
           --configuration Release `
@@ -70,6 +73,7 @@ jobs:
           /p:Version=${{ steps.version.outputs.VERSION }}
 
     - name: Build Release (Framework-Dependent)
+      working-directory: repo
       run: |
         dotnet publish CheapShotcutRandomizer.csproj `
           --configuration Release `
@@ -79,19 +83,20 @@ jobs:
           /p:Version=${{ steps.version.outputs.VERSION }}
 
     - name: Run tests before release
+      working-directory: repo
       run: dotnet test CheapShotcutRandomizer.Tests/CheapShotcutRandomizer.Tests.csproj --configuration Release --verbosity normal
 
     - name: Create release package (Self-Contained)
       shell: pwsh
       run: |
         $version = "${{ steps.version.outputs.VERSION }}"
-        Compress-Archive -Path ./publish/win-x64/* -DestinationPath "./CheapShotcutRandomizer-v$version-win-x64-standalone.zip"
+        Compress-Archive -Path repo/publish/win-x64/* -DestinationPath "./CheapShotcutRandomizer-v$version-win-x64-standalone.zip"
 
     - name: Create release package (Framework-Dependent)
       shell: pwsh
       run: |
         $version = "${{ steps.version.outputs.VERSION }}"
-        Compress-Archive -Path ./publish/win-x64-fd/* -DestinationPath "./CheapShotcutRandomizer-v$version-win-x64.zip"
+        Compress-Archive -Path repo/publish/win-x64-fd/* -DestinationPath "./CheapShotcutRandomizer-v$version-win-x64.zip"
 
     - name: Generate checksums
       shell: pwsh

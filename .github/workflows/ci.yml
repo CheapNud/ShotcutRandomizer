@@ -27,6 +27,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
+        path: repo
         fetch-depth: 0
         submodules: recursive
 
@@ -34,7 +35,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: CheapNud/CheapHelpers
-        path: ../CheapHelpers
+        path: CheapHelpers
         token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Setup .NET 10.0
@@ -50,17 +51,20 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        key: ${{ runner.os }}-nuget-${{ hashFiles('repo/**/*.csproj') }}
         restore-paths: |
           ~/.nuget/packages
 
     - name: Restore dependencies
+      working-directory: repo
       run: dotnet restore CheapShotcutRandomizer.sln
 
     - name: Build solution
+      working-directory: repo
       run: dotnet build CheapShotcutRandomizer.sln --configuration ${{ matrix.configuration }} --no-restore
 
     - name: Run tests
+      working-directory: repo
       run: dotnet test CheapShotcutRandomizer.Tests/CheapShotcutRandomizer.Tests.csproj --configuration ${{ matrix.configuration }} --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
 
     - name: Upload test results
@@ -68,7 +72,7 @@ jobs:
       if: always()
       with:
         name: test-results-${{ matrix.os }}-${{ matrix.configuration }}
-        path: '**/TestResults/**/*.trx'
+        path: 'repo/**/TestResults/**/*.trx'
         retention-days: 30
 
     - name: Upload coverage reports
@@ -76,7 +80,7 @@ jobs:
       if: always()
       with:
         name: coverage-${{ matrix.os }}-${{ matrix.configuration }}
-        path: '**/TestResults/**/coverage.cobertura.xml'
+        path: 'repo/**/TestResults/**/coverage.cobertura.xml'
         retention-days: 30
 
     - name: Publish build artifacts (Release only)
@@ -85,9 +89,9 @@ jobs:
       with:
         name: build-${{ matrix.os }}-${{ matrix.configuration }}
         path: |
-          **/bin/Release/**
-          !**/bin/Release/**/ref/**
-          !**/bin/Release/**/*.pdb
+          repo/**/bin/Release/**
+          !repo/**/bin/Release/**/ref/**
+          !repo/**/bin/Release/**/*.pdb
         retention-days: 7
 
   code-quality:
@@ -98,13 +102,14 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
+        path: repo
         fetch-depth: 0
 
     - name: Checkout CheapHelpers dependency
       uses: actions/checkout@v4
       with:
         repository: CheapNud/CheapHelpers
-        path: ../CheapHelpers
+        path: CheapHelpers
         token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Setup .NET 10.0
@@ -114,13 +119,16 @@ jobs:
         dotnet-quality: 'preview'
 
     - name: Restore dependencies
+      working-directory: repo
       run: dotnet restore CheapShotcutRandomizer.sln
 
     - name: Check code formatting
+      working-directory: repo
       run: dotnet format CheapShotcutRandomizer.sln --verify-no-changes --verbosity diagnostic
       continue-on-error: true
 
     - name: Run code analysis
+      working-directory: repo
       run: dotnet build CheapShotcutRandomizer.sln --configuration Release /p:TreatWarningsAsErrors=false /p:WarningLevel=4
 
   dependency-check:
@@ -130,12 +138,14 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        path: repo
 
     - name: Checkout CheapHelpers dependency
       uses: actions/checkout@v4
       with:
         repository: CheapNud/CheapHelpers
-        path: ../CheapHelpers
+        path: CheapHelpers
         token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Setup .NET 10.0
@@ -145,16 +155,20 @@ jobs:
         dotnet-quality: 'preview'
 
     - name: Restore dependencies
+      working-directory: repo
       run: dotnet restore CheapShotcutRandomizer.sln
 
     - name: Check for vulnerable packages
+      working-directory: repo
       run: dotnet list package --vulnerable --include-transitive
       continue-on-error: true
 
     - name: Check for deprecated packages
+      working-directory: repo
       run: dotnet list package --deprecated
       continue-on-error: true
 
     - name: Check for outdated packages
+      working-directory: repo
       run: dotnet list package --outdated
       continue-on-error: true

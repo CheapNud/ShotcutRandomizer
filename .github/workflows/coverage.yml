@@ -19,13 +19,14 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
+        path: repo
         fetch-depth: 0
 
     - name: Checkout CheapHelpers dependency
       uses: actions/checkout@v4
       with:
         repository: CheapNud/CheapHelpers
-        path: ../CheapHelpers
+        path: CheapHelpers
         token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Setup .NET 10.0
@@ -35,12 +36,15 @@ jobs:
         dotnet-quality: 'preview'
 
     - name: Restore dependencies
+      working-directory: repo
       run: dotnet restore CheapShotcutRandomizer.sln
 
     - name: Build solution
+      working-directory: repo
       run: dotnet build CheapShotcutRandomizer.sln --configuration Debug --no-restore
 
     - name: Run tests with coverage
+      working-directory: repo
       run: |
         dotnet test CheapShotcutRandomizer.Tests/CheapShotcutRandomizer.Tests.csproj `
           --configuration Debug `
@@ -56,8 +60,8 @@ jobs:
     - name: Generate coverage report
       run: |
         reportgenerator `
-          "-reports:TestResults/**/coverage.opencover.xml" `
-          "-targetdir:coveragereport" `
+          "-reports:repo/TestResults/**/coverage.opencover.xml" `
+          "-targetdir:repo/coveragereport" `
           "-reporttypes:Html;Cobertura;MarkdownSummary" `
           "-title:Cheap Shotcut Randomizer Coverage"
 
@@ -65,14 +69,14 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
-        path: coveragereport/
+        path: repo/coveragereport/
         retention-days: 30
 
     - name: Display coverage summary
       shell: pwsh
       run: |
-        if (Test-Path "coveragereport/Summary.md") {
-          Get-Content "coveragereport/Summary.md"
+        if (Test-Path "repo/coveragereport/Summary.md") {
+          Get-Content "repo/coveragereport/Summary.md"
         }
 
     - name: Comment coverage on PR
@@ -80,13 +84,13 @@ jobs:
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         recreate: true
-        path: coveragereport/Summary.md
+        path: repo/coveragereport/Summary.md
 
     - name: Upload to Codecov (optional)
       if: false  # Enable if you set up Codecov
       uses: codecov/codecov-action@v4
       with:
-        files: ./TestResults/**/coverage.opencover.xml
+        files: repo/TestResults/**/coverage.opencover.xml
         flags: unittests
         name: codecov-umbrella
         fail_ci_if_error: false

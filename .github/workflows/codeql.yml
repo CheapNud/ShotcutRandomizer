@@ -27,13 +27,14 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
+        path: repo
         fetch-depth: 0
 
     - name: Checkout CheapHelpers dependency
       uses: actions/checkout@v4
       with:
         repository: CheapNud/CheapHelpers
-        path: ../CheapHelpers
+        path: CheapHelpers
         token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Setup .NET 10.0
@@ -49,9 +50,11 @@ jobs:
         queries: security-and-quality
 
     - name: Restore dependencies
+      working-directory: repo
       run: dotnet restore CheapShotcutRandomizer.sln
 
     - name: Build for CodeQL
+      working-directory: repo
       run: dotnet build CheapShotcutRandomizer.sln --configuration Release --no-restore
 
     - name: Perform CodeQL Analysis
