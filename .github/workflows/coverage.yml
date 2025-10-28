@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: CheapNud/CheapHelpers
-        path: CheapHelpers
+        path: ../CheapHelpers
         token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Setup .NET 10.0
