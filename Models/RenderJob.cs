@@ -295,7 +295,7 @@ public class RenderJob
             len /= 1024;
         }
 
-        return $"{len:F2} {sizes[order]}";
+        return $"{len.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)} {sizes[order]}";
     }
 
     /// <summary>

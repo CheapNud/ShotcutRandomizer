@@ -18,7 +18,7 @@ public class SvpDetectionService
     /// <summary>
     /// Detect SVP installation (cached after first call)
     /// </summary>
-    public SvpInstallation DetectSvpInstallation()
+    public virtual SvpInstallation DetectSvpInstallation()
     {
         if (_cachedInstallation != null)
             return _cachedInstallation;

@@ -17,6 +17,9 @@ public class RenderJobCardTests : TestContext
     public RenderJobCardTests()
     {
         Services.AddMudServices();
+
+        // Setup JSInterop for MudBlazor components
+        JSInterop.Mode = JSInteropMode.Loose;
     }
 
     [Fact]

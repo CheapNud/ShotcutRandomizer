@@ -17,7 +17,7 @@ public class HardwareDetectionService(SvpDetectionService svpDetection)
     /// <summary>
     /// Detect hardware capabilities (cached after first call)
     /// </summary>
-    public async Task<HardwareCapabilities> DetectHardwareAsync()
+    public virtual async Task<HardwareCapabilities> DetectHardwareAsync()
     {
         if (_cachedCapabilities != null)
             return _cachedCapabilities;

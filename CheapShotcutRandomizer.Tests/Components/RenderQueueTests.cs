@@ -22,19 +22,24 @@ public class RenderQueueTests : TestContext
     private readonly Mock<IRenderQueueService> _mockQueueService;
     private readonly Mock<IRenderJobRepository> _mockRepository;
     private readonly Mock<HardwareDetectionService> _mockHardwareService;
+    private readonly Mock<SvpDetectionService> _mockSvpDetection;
 
     public RenderQueueTests()
     {
         // Setup mocks
         _mockQueueService = new Mock<IRenderQueueService>();
         _mockRepository = new Mock<IRenderJobRepository>();
-        _mockHardwareService = new Mock<HardwareDetectionService>();
+        _mockSvpDetection = new Mock<SvpDetectionService>();
+        _mockHardwareService = new Mock<HardwareDetectionService>(_mockSvpDetection.Object);
 
         // Register services
         Services.AddMudServices();
         Services.AddSingleton(_mockQueueService.Object);
         Services.AddSingleton(_mockRepository.Object);
         Services.AddSingleton(_mockHardwareService.Object);
+
+        // Setup JSInterop for MudBlazor components
+        JSInterop.Mode = JSInteropMode.Loose;
 
         // Setup mock defaults
         _mockQueueService.Setup(x => x.IsQueuePaused).Returns(true);
